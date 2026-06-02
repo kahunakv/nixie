@@ -15,9 +15,13 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
 
     private readonly ILogger? logger;
 
+    private const int LargeBatchCapacityThreshold = 4096;
+
     private readonly ConcurrentQueue<ActorMessage<TRequest>> inbox = new();
     
-    private readonly List<TRequest> messages = [];
+    private List<TRequest> messages = [];
+
+    private int pendingMessageCount;
 
     private TaskCompletionSource? gracefulShutdown;
 
@@ -38,7 +42,7 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
     /// <summary>
     /// Returns the number of messages in the inbox
     /// </summary>
-    public int MessageCount => inbox.Count;
+    public int MessageCount => Volatile.Read(ref pendingMessageCount);
 
     /// <summary>
     /// Reference to the actual actor
@@ -85,6 +89,7 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
             return;
 
         inbox.Enqueue(new ActorMessage<TRequest>(message, sender));
+        Interlocked.Increment(ref pendingMessageCount);
 
         if (1 == Interlocked.Exchange(ref processing, 0))
             _ = DeliverMessages();
@@ -149,7 +154,7 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
 
             ActorContext.Runner = this;
 
-            do
+            while (shutdown == 1)
             {
                 do
                 {
@@ -158,6 +163,8 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
 
                     while (inbox.TryDequeue(out ActorMessage<TRequest> message))
                     {
+                        Interlocked.Decrement(ref pendingMessageCount);
+
                         if (shutdown == 0)
                             break;
 
@@ -181,16 +188,24 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
                         catch (Exception ex)
                         {
                             logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
-
-                            // Console.WriteLine("[{0}] {1}: {2}\n{3}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
                         }
 
                         messages.Clear();
+                        TrimBatchListIfNeeded();
                     }
 
                 } while (!inbox.IsEmpty);
-                
-            } while (shutdown == 1 && Interlocked.CompareExchange(ref processing, 1, 0) != 0);
+
+                Interlocked.Exchange(ref processing, 1);
+
+                if (inbox.IsEmpty || shutdown == 0)
+                    break;
+
+                if (Interlocked.Exchange(ref processing, 0) == 1)
+                    continue;
+
+                break;
+            }
 
             gracefulShutdown?.SetResult();
         }
@@ -228,11 +243,18 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
     {
         if (inbox.TryDequeue(out ActorMessage<TRequest> nextMssage))
         {
+            Interlocked.Decrement(ref pendingMessageCount);
             message = nextMssage.Request;
             return true;
         }
 
         message = null;
         return false;
+    }
+
+    private void TrimBatchListIfNeeded()
+    {
+        if (messages.Capacity > LargeBatchCapacityThreshold)
+            messages = [];
     }
 }

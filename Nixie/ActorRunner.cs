@@ -18,6 +18,8 @@ public sealed class ActorRunner<TActor, TRequest> where TActor : IActor<TRequest
 
     private readonly ConcurrentQueue<ActorMessage<TRequest>> inbox = new();
 
+    private int pendingMessageCount;
+
     private TaskCompletionSource? gracefulShutdown;
 
     private int processing = 1;
@@ -37,7 +39,7 @@ public sealed class ActorRunner<TActor, TRequest> where TActor : IActor<TRequest
     /// <summary>
     /// Returns the number of messages in the inbox
     /// </summary>
-    public int MessageCount => inbox.Count;
+    public int MessageCount => Volatile.Read(ref pendingMessageCount);
 
     /// <summary>
     /// Reference to the actual actor
@@ -84,7 +86,8 @@ public sealed class ActorRunner<TActor, TRequest> where TActor : IActor<TRequest
             return;
         
         inbox.Enqueue(new(message, sender));
-                
+        Interlocked.Increment(ref pendingMessageCount);
+
         if (1 == Interlocked.Exchange(ref processing, 0))
             _ = DeliverMessages();
 
@@ -162,10 +165,12 @@ public sealed class ActorRunner<TActor, TRequest> where TActor : IActor<TRequest
 
             ActorContext.Runner = this;
 
-            do
+            while (shutdown == 1)
             {
                 while (inbox.TryDequeue(out ActorMessage<TRequest> message))
                 {
+                    Interlocked.Decrement(ref pendingMessageCount);
+
                     if (shutdown == 0)
                         break;
 
@@ -187,8 +192,17 @@ public sealed class ActorRunner<TActor, TRequest> where TActor : IActor<TRequest
                         logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
                     }
                 }
-            } 
-            while (shutdown == 1 && Interlocked.CompareExchange(ref processing, 1, 0) != 0);
+
+                Interlocked.Exchange(ref processing, 1);
+
+                if (inbox.IsEmpty || shutdown == 0)
+                    break;
+
+                if (Interlocked.Exchange(ref processing, 0) == 1)
+                    continue;
+
+                break;
+            }
 
             gracefulShutdown?.SetResult();
         }
@@ -333,6 +347,7 @@ public sealed class ActorRunner<TActor, TRequest> where TActor : IActor<TRequest
     {
         if (inbox.TryDequeue(out ActorMessage<TRequest> nextMssage))
         {
+            Interlocked.Decrement(ref pendingMessageCount);
             message = nextMssage.Request;
             return true;
         }

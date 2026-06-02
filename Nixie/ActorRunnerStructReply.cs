@@ -19,6 +19,8 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
 
     private readonly ConcurrentQueue<ActorMessageReply<TRequest, TResponse>> inbox = new();
 
+    private int pendingMessageCount;
+
     private TaskCompletionSource? gracefulShutdown;
 
     private int processing = 1;
@@ -38,7 +40,7 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
     /// <summary>
     /// Returns the number of messages in the inbox
     /// </summary>
-    public int MessageCount => inbox.Count;
+    public int MessageCount => Volatile.Read(ref pendingMessageCount);
 
     /// <summary>
     /// The reference to the actor.
@@ -84,22 +86,41 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
     /// <returns></returns>
     public TaskCompletionSource<TResponse> SendAndTryDeliver(TRequest message, IGenericActorRef? sender, ActorMessageReply<TRequest, TResponse>? parentReply)
     {
-        TaskCompletionSource<TResponse> promise = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        ActorMessageReply<TRequest, TResponse> messageReply = parentReply ?? new(message, sender, promise);
-
         if (shutdown == 0)
         {
-            promise.TrySetCanceled(CancellationToken.None);
-            return promise;
+            if (parentReply.HasValue)
+            {
+                parentReply.Value.Promise.TrySetCanceled(CancellationToken.None);
+                return parentReply.Value.Promise;
+            }
+
+            TaskCompletionSource<TResponse> canceledPromise = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            canceledPromise.TrySetCanceled(CancellationToken.None);
+            return canceledPromise;
+        }
+
+        ActorMessageReply<TRequest, TResponse> messageReply;
+        TaskCompletionSource<TResponse> returnPromise;
+
+        if (!parentReply.HasValue)
+        {
+            TaskCompletionSource<TResponse> promise = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            messageReply = new(message, sender, promise);
+            returnPromise = promise;
+        }
+        else
+        {
+            messageReply = parentReply.Value;
+            returnPromise = parentReply.Value.Promise;
         }
 
         inbox.Enqueue(messageReply);
+        Interlocked.Increment(ref pendingMessageCount);
 
         if (1 == Interlocked.Exchange(ref processing, 0))
             _ = DeliverMessages();
 
-        return promise;
+        return returnPromise;
     }
 
     /// <summary>
@@ -161,10 +182,12 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
 
             ActorContext.Runner = this;
 
-            do
+            while (shutdown == 1)
             {
                 while (inbox.TryDequeue(out ActorMessageReply<TRequest, TResponse> message))
                 {
+                    Interlocked.Decrement(ref pendingMessageCount);
+
                     if (shutdown == 0 || ActorContext is null)
                         break;
 
@@ -181,10 +204,7 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
                         TResponse response = await Actor.Receive(message.Request);
 
                         if (!ActorContext.ByPassReply)
-                        {
                             message.Promise.TrySetResult(response);
-                            //Console.WriteLine("set result");
-                        }
                     }
                     catch (Exception ex)
                     {
@@ -193,7 +213,17 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
                         logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
                     }
                 }
-            } while (shutdown == 1 && (Interlocked.CompareExchange(ref processing, 1, 0) != 0));
+
+                Interlocked.Exchange(ref processing, 1);
+
+                if (inbox.IsEmpty || shutdown == 0)
+                    break;
+
+                if (Interlocked.Exchange(ref processing, 0) == 1)
+                    continue;
+
+                break;
+            }
 
             gracefulShutdown?.SetResult();
         }

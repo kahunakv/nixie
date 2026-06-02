@@ -49,7 +49,7 @@ public class ConsistentHashActor<TActor, TRequest, TResponse> : IActor<TRequest,
     /// <returns></returns>
     public Task<TResponse?> Receive(TRequest message)
     {
-        int bucket = Math.Abs(message.GetHash()) % instances.Count;
+        int bucket = (message.GetHash() & int.MaxValue) % instances.Count;
         IActorRef<TActor, TRequest, TResponse> instance = instances[bucket];
         context.ByPassReply = true; // Marks the response to be bypassed so other actor can reply
         instance.Send(message, context.Reply);
