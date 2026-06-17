@@ -15,6 +15,8 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
 
     private readonly ILogger? logger;
 
+    private readonly int? maxInboxSize;
+
     private const int LargeBatchCapacityThreshold = 4096;
 
     private readonly ConcurrentQueue<ActorMessage<TRequest>> inbox = new();
@@ -70,10 +72,11 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
     /// <param name="actorSystem"></param>
     /// <param name="logger"></param>
     /// <param name="name"></param>
-    public ActorRunnerAggregate(ActorSystem actorSystem, ILogger? logger, string name)
+    public ActorRunnerAggregate(ActorSystem actorSystem, ILogger? logger, string name, int? maxInboxSize = null)
     {
         this.actorSystem = actorSystem;
         this.logger = logger;
+        this.maxInboxSize = maxInboxSize;
 
         Name = name;
     }
@@ -88,8 +91,21 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
         if (shutdown == 0)
             return;
 
+        if (maxInboxSize.HasValue)
+        {
+            int newCount = Interlocked.Increment(ref pendingMessageCount);
+            if (newCount > maxInboxSize.Value)
+            {
+                Interlocked.Decrement(ref pendingMessageCount);
+                throw new ActorBusyException(Name, newCount - 1, maxInboxSize.Value);
+            }
+        }
+        else
+        {
+            Interlocked.Increment(ref pendingMessageCount);
+        }
+
         inbox.Enqueue(new ActorMessage<TRequest>(message, sender));
-        Interlocked.Increment(ref pendingMessageCount);
 
         if (1 == Interlocked.Exchange(ref processing, 0))
             _ = DeliverMessages();

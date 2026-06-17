@@ -16,6 +16,8 @@ public sealed class ActorRunner<TActor, TRequest> where TActor : IActor<TRequest
 
     private readonly ILogger? logger;
 
+    private readonly int? maxInboxSize;
+
     private readonly ConcurrentQueue<ActorMessage<TRequest>> inbox = new();
 
     private int pendingMessageCount;
@@ -67,10 +69,11 @@ public sealed class ActorRunner<TActor, TRequest> where TActor : IActor<TRequest
     /// <param name="actorSystem"></param>
     /// <param name="logger"></param>
     /// <param name="name"></param>
-    public ActorRunner(ActorSystem actorSystem, ILogger? logger, string name)
+    public ActorRunner(ActorSystem actorSystem, ILogger? logger, string name, int? maxInboxSize = null)
     {
         this.actorSystem = actorSystem;
         this.logger = logger;
+        this.maxInboxSize = maxInboxSize;
 
         Name = name;
     }
@@ -84,9 +87,22 @@ public sealed class ActorRunner<TActor, TRequest> where TActor : IActor<TRequest
     {
         if (shutdown == 0)
             return;
-        
+
+        if (maxInboxSize.HasValue)
+        {
+            int newCount = Interlocked.Increment(ref pendingMessageCount);
+            if (newCount > maxInboxSize.Value)
+            {
+                Interlocked.Decrement(ref pendingMessageCount);
+                throw new ActorBusyException(Name, newCount - 1, maxInboxSize.Value);
+            }
+        }
+        else
+        {
+            Interlocked.Increment(ref pendingMessageCount);
+        }
+
         inbox.Enqueue(new(message, sender));
-        Interlocked.Increment(ref pendingMessageCount);
 
         if (1 == Interlocked.Exchange(ref processing, 0))
             _ = DeliverMessages();

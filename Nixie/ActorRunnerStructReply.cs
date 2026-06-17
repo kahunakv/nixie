@@ -17,6 +17,8 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
 
     private readonly ILogger? logger;
 
+    private readonly int? maxInboxSize;
+
     private readonly ConcurrentQueue<ActorMessageReply<TRequest, TResponse>> inbox = new();
 
     private int pendingMessageCount;
@@ -68,10 +70,11 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
     /// <param name="actorSystem"></param>
     /// <param name="logger"></param>
     /// <param name="name"></param>
-    public ActorRunnerStruct(ActorSystem actorSystem, ILogger? logger, string name)
+    public ActorRunnerStruct(ActorSystem actorSystem, ILogger? logger, string name, int? maxInboxSize = null)
     {
         this.actorSystem = actorSystem;
         this.logger = logger;
+        this.maxInboxSize = maxInboxSize;
 
         Name = name;
     }
@@ -114,8 +117,22 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
             returnPromise = parentReply.Value.Promise;
         }
 
+        if (maxInboxSize.HasValue)
+        {
+            int newCount = Interlocked.Increment(ref pendingMessageCount);
+            if (newCount > maxInboxSize.Value)
+            {
+                Interlocked.Decrement(ref pendingMessageCount);
+                returnPromise.TrySetException(new ActorBusyException(Name, newCount - 1, maxInboxSize.Value));
+                return returnPromise;
+            }
+        }
+        else
+        {
+            Interlocked.Increment(ref pendingMessageCount);
+        }
+
         inbox.Enqueue(messageReply);
-        Interlocked.Increment(ref pendingMessageCount);
 
         if (1 == Interlocked.Exchange(ref processing, 0))
             _ = DeliverMessages();
@@ -208,7 +225,7 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
                     }
                     catch (Exception ex)
                     {
-                        message.Promise.TrySetResult(default);
+                        message.Promise.TrySetException(ex);
 
                         logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
                     }

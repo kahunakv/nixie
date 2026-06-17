@@ -95,6 +95,9 @@ public sealed class ActorRepository<TActor, TRequest> : IActorRepositoryRunnable
     /// <returns></returns>
     /// <exception cref="NixieException"></exception>
     public IActorRef<TActor, TRequest> Spawn(string? name = null, params object[]? args)
+        => Spawn(name, null, args);
+
+    public IActorRef<TActor, TRequest> Spawn(string? name, ActorRunnerOptions? options, params object[]? args)
     {
         if (!string.IsNullOrEmpty(name))
         {
@@ -108,17 +111,19 @@ public sealed class ActorRepository<TActor, TRequest> : IActorRepositoryRunnable
             name = Guid.NewGuid().ToString();
         }
 
+        int? maxInboxSize = options?.MaxInboxSize;
+
         Lazy<(ActorRunner<TActor, TRequest> runner, ActorRef<TActor, TRequest> actorRef)> actor = actors.GetOrAdd(
             name,
-            (string _) => new(() => CreateInternal(name, args))
+            (string _) => new(() => CreateInternal(name, maxInboxSize, args))
         );
 
         return actor.Value.actorRef;
     }
 
-    private (ActorRunner<TActor, TRequest>, ActorRef<TActor, TRequest>) CreateInternal(string name, params object[]? args)
+    private (ActorRunner<TActor, TRequest>, ActorRef<TActor, TRequest>) CreateInternal(string name, int? maxInboxSize, params object[]? args)
     {
-        ActorRunner<TActor, TRequest> runner = new(actorSystem, logger, name);
+        ActorRunner<TActor, TRequest> runner = new(actorSystem, logger, name, maxInboxSize);
 
         ActorRef<TActor, TRequest>? actorRef = (ActorRef<TActor, TRequest>?)Activator.CreateInstance(typeof(ActorRef<TActor, TRequest>), runner);
 

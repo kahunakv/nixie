@@ -17,10 +17,12 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> where TActor : IAct
 
     private readonly ILogger? logger;
 
+    private readonly int? maxInboxSize;
+
     private readonly ConcurrentQueue<ActorMessageReply<TRequest, TResponse>> inbox = new();
 
     private int pendingMessageCount;
-    
+
     private TaskCompletionSource? gracefulShutdown;
 
     private int processing = 1;
@@ -68,10 +70,11 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> where TActor : IAct
     /// <param name="actorSystem"></param>
     /// <param name="logger"></param>
     /// <param name="name"></param>
-    public ActorRunner(ActorSystem actorSystem, ILogger? logger, string name)
+    public ActorRunner(ActorSystem actorSystem, ILogger? logger, string name, int? maxInboxSize = null)
     {
         this.actorSystem = actorSystem;
         this.logger = logger;
+        this.maxInboxSize = maxInboxSize;
 
         Name = name;
     }
@@ -114,8 +117,22 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> where TActor : IAct
             returnPromise = parentReply.Value.Promise;
         }
 
+        if (maxInboxSize.HasValue)
+        {
+            int newCount = Interlocked.Increment(ref pendingMessageCount);
+            if (newCount > maxInboxSize.Value)
+            {
+                Interlocked.Decrement(ref pendingMessageCount);
+                returnPromise.TrySetException(new ActorBusyException(Name, newCount - 1, maxInboxSize.Value));
+                return returnPromise;
+            }
+        }
+        else
+        {
+            Interlocked.Increment(ref pendingMessageCount);
+        }
+
         inbox.Enqueue(messageReply);
-        Interlocked.Increment(ref pendingMessageCount);
 
         if (1 == Interlocked.Exchange(ref processing, 0))
             Task.Run(DeliverMessages);
@@ -208,7 +225,7 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> where TActor : IAct
                     }
                     catch (Exception ex)
                     {
-                        message.Promise.TrySetResult(null);
+                        message.Promise.TrySetException(ex);
 
                         logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
                     }
@@ -269,7 +286,7 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> where TActor : IAct
             }
             catch (Exception ex)
             {
-                singleMessage.Promise.TrySetResult(null);
+                singleMessage.Promise.TrySetException(ex);
 
                 logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
             }
@@ -298,7 +315,7 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> where TActor : IAct
                     }
                     catch (Exception ex)
                     {
-                        message.Promise.TrySetResult(null);
+                        message.Promise.TrySetException(ex);
 
                         logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
                     }
@@ -338,7 +355,7 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> where TActor : IAct
         }
         catch (Exception ex)
         {
-            message.Promise.TrySetResult(null);
+            message.Promise.TrySetException(ex);
 
             logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
         }
