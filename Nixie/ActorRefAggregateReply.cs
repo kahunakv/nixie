@@ -58,11 +58,19 @@ public sealed class ActorRefAggregate<TActor, TRequest, TResponse> : IGenericAct
     /// </summary>
     /// <param name="message"></param>
     /// <returns></returns>    
-    public async Task<TResponse?> Ask(TRequest message)
+    public Task<TResponse?> Ask(TRequest message)
     {
-        TaskCompletionSource<TResponse?> promise = Runner.SendAndTryDeliver(message, null, null);
-
-        return await promise.Task;
+        // Non-async: return the promise's own task directly, avoiding the extra async state-machine box and
+        // wrapper task. A synchronous fault from SendAndTryDeliver (e.g. a throwing control predicate) is
+        // still surfaced through the returned task, matching the previous async behavior.
+        try
+        {
+            return Runner.SendAndTryDeliver(message, null, null).Task;
+        }
+        catch (Exception exception)
+        {
+            return Task.FromException<TResponse?>(exception);
+        }
     }
 
     /// <summary>
@@ -104,11 +112,17 @@ public sealed class ActorRefAggregate<TActor, TRequest, TResponse> : IGenericAct
     /// <param name="message"></param>
     /// <param name="sender"></param>
     /// <returns></returns>
-    public async Task<TResponse?> Ask(TRequest message, IGenericActorRef sender)
+    public Task<TResponse?> Ask(TRequest message, IGenericActorRef sender)
     {
-        TaskCompletionSource<TResponse?> promise = Runner.SendAndTryDeliver(message, sender, null);
-
-        return await promise.Task;
+        // Non-async direct return; see the no-sender overload for rationale.
+        try
+        {
+            return Runner.SendAndTryDeliver(message, sender, null).Task;
+        }
+        catch (Exception exception)
+        {
+            return Task.FromException<TResponse?>(exception);
+        }
     }
 
     /// <summary>
