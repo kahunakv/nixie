@@ -86,6 +86,24 @@ public sealed class PriorityStructActor : IActorStruct<PriorityStructRequest, in
     }
 }
 
+public readonly struct AllocProbeRequest
+{
+    public int Id { get; init; }
+
+    public bool IsControl { get; init; }
+}
+
+/// <summary>
+/// Minimal struct-reply actor with no per-message side effects, used to measure the allocation difference
+/// between the typed and untyped control-message classifiers.
+/// </summary>
+public sealed class AllocProbeStructActor : IActorStruct<AllocProbeRequest, int>
+{
+    public AllocProbeStructActor(IActorContextStruct<AllocProbeStructActor, AllocProbeRequest, int> _) { }
+
+    public Task<int> Receive(AllocProbeRequest message) => Task.FromResult(message.Id);
+}
+
 public sealed class ReadRequest
 {
     public required string Kind { get; init; }   // "read" (user request) or "resume" (control completion)

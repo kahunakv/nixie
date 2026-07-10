@@ -19,7 +19,7 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
 
     private readonly int? maxInboxSize;
 
-    private readonly Func<object, bool>? isControlMessage;
+    private readonly Func<TRequest, bool>? isControlMessage;
 
     private readonly ConcurrentQueue<ActorMessageReply<TRequest, TResponse>> inbox = new();
 
@@ -76,7 +76,7 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
     /// <param name="actorSystem"></param>
     /// <param name="logger"></param>
     /// <param name="name"></param>
-    public ActorRunnerStruct(ActorSystem actorSystem, ILogger? logger, string name, int? maxInboxSize = null, Func<object, bool>? isControlMessage = null)
+    public ActorRunnerStruct(ActorSystem actorSystem, ILogger? logger, string name, int? maxInboxSize = null, Func<TRequest, bool>? isControlMessage = null)
     {
         this.actorSystem = actorSystem;
         this.logger = logger;

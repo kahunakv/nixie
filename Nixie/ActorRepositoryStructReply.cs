@@ -112,7 +112,7 @@ public sealed class ActorRepositoryStruct<TActor, TRequest, TResponse> : IActorR
         }
 
         int? maxInboxSize = options?.MaxInboxSize;
-        Func<object, bool>? isControlMessage = options?.IsControlMessage;
+        Func<TRequest, bool>? isControlMessage = ResolveControlPredicate(options);
 
         Lazy<(ActorRunnerStruct<TActor, TRequest, TResponse> runner, ActorRefStruct<TActor, TRequest, TResponse> actorRef)> actor = actors.GetOrAdd(
             name,
@@ -122,7 +122,25 @@ public sealed class ActorRepositoryStruct<TActor, TRequest, TResponse> : IActorR
         return actor.Value.actorRef;
     }
 
-    private (ActorRunnerStruct<TActor, TRequest, TResponse>, ActorRefStruct<TActor, TRequest, TResponse>) CreateInternal(string name, int? maxInboxSize, Func<object, bool>? isControlMessage, params object[]? args)
+    /// <summary>
+    /// Resolves the control-message classifier to a typed predicate. A typed <see cref="ActorRunnerOptions{TRequest}"/>
+    /// is used directly (no boxing); a legacy <see cref="ActorRunnerOptions.IsControlMessage"/> is adapted, which
+    /// boxes the struct request per call — the reason the typed option exists.
+    /// </summary>
+    private static Func<TRequest, bool>? ResolveControlPredicate(ActorRunnerOptions? options)
+    {
+        if (options is ActorRunnerOptions<TRequest> typed && typed.IsControlMessage is not null)
+            return typed.IsControlMessage;
+
+        Func<object, bool>? untyped = options?.IsControlMessage;
+
+        if (untyped is not null)
+            return request => untyped(request);
+
+        return null;
+    }
+
+    private (ActorRunnerStruct<TActor, TRequest, TResponse>, ActorRefStruct<TActor, TRequest, TResponse>) CreateInternal(string name, int? maxInboxSize, Func<TRequest, bool>? isControlMessage, params object[]? args)
     {
         ActorRunnerStruct<TActor, TRequest, TResponse> runner = new(actorSystem, logger, name, maxInboxSize, isControlMessage);
 

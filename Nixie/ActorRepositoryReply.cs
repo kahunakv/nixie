@@ -112,7 +112,7 @@ public sealed class ActorRepository<TActor, TRequest, TResponse> : IActorReposit
         }
 
         int? maxInboxSize = options?.MaxInboxSize;
-        Func<object, bool>? isControlMessage = options?.IsControlMessage;
+        Func<object, bool>? isControlMessage = ResolveControlPredicate(options);
 
         Lazy<(ActorRunner<TActor, TRequest, TResponse> runner, ActorRef<TActor, TRequest, TResponse> actorRef)> actor = actors.GetOrAdd(
             name,
@@ -120,6 +120,19 @@ public sealed class ActorRepository<TActor, TRequest, TResponse> : IActorReposit
         );
 
         return actor.Value.actorRef;
+    }
+
+    /// <summary>
+    /// Resolves the control-message classifier. A typed <see cref="ActorRunnerOptions{TRequest}"/> is adapted
+    /// with a reference cast (no boxing, since <typeparamref name="TRequest"/> is a class); otherwise the base
+    /// <see cref="ActorRunnerOptions.IsControlMessage"/> is used directly.
+    /// </summary>
+    private static Func<object, bool>? ResolveControlPredicate(ActorRunnerOptions? options)
+    {
+        if (options is ActorRunnerOptions<TRequest> typed && typed.IsControlMessage is not null)
+            return message => typed.IsControlMessage((TRequest)message);
+
+        return options?.IsControlMessage;
     }
 
     private (ActorRunner<TActor, TRequest, TResponse>, ActorRef<TActor, TRequest, TResponse>) CreateInternal(string name, int? maxInboxSize, Func<object, bool>? isControlMessage, params object[]? args)
