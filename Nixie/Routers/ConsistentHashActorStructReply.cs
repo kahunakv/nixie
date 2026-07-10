@@ -13,6 +13,10 @@ public class ConsistentHashActorStruct<TActor, TRequest, TResponse> : IActorStru
 
     private readonly List<IActorRefStruct<TActor, TRequest, TResponse>> instances = new();
 
+    // The real reply is forwarded to a routee (ByPassReply); this completed task is only returned to satisfy
+    // the signature. Cached per closed router type so Receive does not allocate a Task.FromResult per message.
+    private static readonly Task<TResponse> BypassResult = Task.FromResult<TResponse>(default);
+
     /// <summary>
     /// Returns the list of instances
     /// </summary>
@@ -53,6 +57,6 @@ public class ConsistentHashActorStruct<TActor, TRequest, TResponse> : IActorStru
         IActorRefStruct<TActor, TRequest, TResponse> instance = instances[bucket];
         context.ByPassReply = true; // Marks the response to be bypassed so other actor can reply
         instance.Send(message, context.Reply);
-        return Task.FromResult((TResponse)default);
+        return BypassResult;
     }
 }

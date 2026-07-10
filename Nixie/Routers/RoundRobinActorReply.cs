@@ -21,6 +21,10 @@ public class RoundRobinActor<TActor, TRequest, TResponse> : IActor<TRequest, TRe
 
     private readonly List<IActorRef<TActor, TRequest, TResponse>> instances = new();
 
+    // The real reply is forwarded to a routee (ByPassReply); this completed task is only returned to satisfy
+    // the signature. Cached per closed router type so Receive does not allocate a Task.FromResult per message.
+    private static readonly Task<TResponse?> BypassResult = Task.FromResult<TResponse?>(default);
+
     /// <summary>
     /// Returns the current list of instances
     /// </summary>
@@ -65,7 +69,7 @@ public class RoundRobinActor<TActor, TRequest, TResponse> : IActor<TRequest, TRe
         IActorRef<TActor, TRequest, TResponse> instance = instances[position % instances.Count];
         context.ByPassReply = true; // Marks the response to be bypassed so other actor can reply
         instance.Send(message, context.Reply);
-        
-        return Task.FromResult((TResponse?)default);
+
+        return BypassResult;
     }
 }
