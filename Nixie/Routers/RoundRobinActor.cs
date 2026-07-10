@@ -35,6 +35,8 @@ public class RoundRobinActor<TActor, TRequest> : IActor<TRequest>
     {
         this.context = context;
 
+        instances.Capacity = numberInstances;
+
         for (int i = 0; i < numberInstances; i++)
             instances.Add(context.ActorSystem.Spawn<TActor, TRequest>());
     }

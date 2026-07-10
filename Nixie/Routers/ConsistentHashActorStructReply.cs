@@ -31,6 +31,8 @@ public class ConsistentHashActorStruct<TActor, TRequest, TResponse> : IActorStru
     {
         this.context = context;
 
+        instances.Capacity = numberInstances;
+
         for (int i = 0; i < numberInstances; i++)
             instances.Add(context.ActorSystem.SpawnStruct<TActor, TRequest, TResponse>());
     }

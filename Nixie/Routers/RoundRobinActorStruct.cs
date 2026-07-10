@@ -33,6 +33,8 @@ public class RoundRobinActorStruct<TActor, TRequest> : IActorStruct<TRequest>
     {
         this.context = context;
 
+        instances.Capacity = numberInstances;
+
         for (int i = 0; i < numberInstances; i++)
             instances.Add(context.ActorSystem.SpawnStruct<TActor, TRequest>());
     }
