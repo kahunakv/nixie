@@ -42,13 +42,13 @@ The package targets `net8.0`.
 Using the .NET CLI:
 
 ```shell
-dotnet add package Nixie --version 1.2.1
+dotnet add package Nixie --version 1.2.2
 ```
 
 Using the NuGet Package Manager Console:
 
 ```shell
-Install-Package Nixie -Version 1.2.1
+Install-Package Nixie -Version 1.2.2
 ```
 
 ## Basic Usage
