@@ -16,7 +16,7 @@ public sealed class TestBackpressure
         // capacity = 1: slow actor holds 1 message while processing; a second enqueue fills the inbox.
         // A third must be rejected.
         IActorRef<ReplySlowActor, string, string> actor =
-            asx.Spawn<ReplySlowActor, string, string>(null, new ActorRunnerOptions { MaxInboxSize = 1 });
+            asx.SpawnWithOptions<ReplySlowActor, string, string>(null, new ActorRunnerOptions { MaxInboxSize = 1 });
 
         // Fill the inbox — this starts processing (slow, 2 s)
         Task<string?> first = actor.Ask("fill");
@@ -41,7 +41,7 @@ public sealed class TestBackpressure
         using ActorSystem asx = new();
 
         IActorRef<ReplySlowActor, string, string> actor =
-            asx.Spawn<ReplySlowActor, string, string>(null, new ActorRunnerOptions { MaxInboxSize = 1 });
+            asx.SpawnWithOptions<ReplySlowActor, string, string>(null, new ActorRunnerOptions { MaxInboxSize = 1 });
 
         actor.Send("fill");
         await Task.Delay(50);
@@ -82,7 +82,7 @@ public sealed class TestBackpressure
         using ActorSystem asx = new();
 
         IActorRef<ReplySlowActor, string, string> actor =
-            asx.Spawn<ReplySlowActor, string, string>("bp-meta-actor", new ActorRunnerOptions { MaxInboxSize = 1 });
+            asx.SpawnWithOptions<ReplySlowActor, string, string>("bp-meta-actor", new ActorRunnerOptions { MaxInboxSize = 1 });
 
         actor.Send("fill");
         await Task.Delay(50);
@@ -160,7 +160,7 @@ public sealed class TestBackpressure
         using ActorSystem asx = new();
 
         IActorRef<FireAndForgetSlowActor, string> actor =
-            asx.Spawn<FireAndForgetSlowActor, string>(null, new ActorRunnerOptions { MaxInboxSize = 1 });
+            asx.SpawnWithOptions<FireAndForgetSlowActor, string>(null, new ActorRunnerOptions { MaxInboxSize = 1 });
 
         actor.Send("fill");
 

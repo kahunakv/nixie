@@ -63,12 +63,12 @@ public sealed class ActorSystem : IDisposable
     /// <summary>
     /// Creates a new request/response actor with options (e.g. a bounded inbox) and returns a typed reference.
     /// </summary>
-    public IActorRef<TActor, TRequest, TResponse> Spawn<TActor, TRequest, TResponse>(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRef<TActor, TRequest, TResponse> SpawnWithOptions<TActor, TRequest, TResponse>(string? name, ActorRunnerOptions? options, params object[]? args)
         where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         ActorRepository<TActor, TRequest, TResponse> repository = GetRepository<TActor, TRequest, TResponse>();
 
-        return repository.Spawn(name, options, args);
+        return repository.SpawnWithOptions(name, options, args);
     }
 
     /// <summary>
@@ -91,12 +91,12 @@ public sealed class ActorSystem : IDisposable
     /// <summary>
     /// Creates a new fire-n-forget aggregate actor with options (e.g. a bounded inbox) and returns a typed reference.
     /// </summary>
-    public IActorRefAggregate<TActor, TRequest> SpawnAggregate<TActor, TRequest>(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRefAggregate<TActor, TRequest> SpawnAggregateWithOptions<TActor, TRequest>(string? name, ActorRunnerOptions? options, params object[]? args)
         where TActor : IActorAggregate<TRequest> where TRequest : class
     {
         ActorRepositoryAggregate<TActor, TRequest> repository = GetRepositoryAggregate<TActor, TRequest>();
 
-        return repository.Spawn(name, options, args);
+        return repository.SpawnWithOptions(name, options, args);
     }
 
     /// <summary>
@@ -118,12 +118,12 @@ public sealed class ActorSystem : IDisposable
     /// <summary>
     /// Creates a new fire-n-forget actor with options (e.g. a bounded inbox) and returns a typed reference.
     /// </summary>
-    public IActorRef<TActor, TRequest> Spawn<TActor, TRequest>(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRef<TActor, TRequest> SpawnWithOptions<TActor, TRequest>(string? name, ActorRunnerOptions? options, params object[]? args)
         where TActor : IActor<TRequest> where TRequest : class
     {
         ActorRepository<TActor, TRequest> repository = GetRepository<TActor, TRequest>();
 
-        return repository.Spawn(name, options, args);
+        return repository.SpawnWithOptions(name, options, args);
     }
 
     /// <summary>
@@ -146,12 +146,12 @@ public sealed class ActorSystem : IDisposable
     /// <summary>
     /// Creates a new request/response struct actor with options (e.g. a bounded inbox) and returns a typed reference.
     /// </summary>
-    public IActorRefStruct<TActor, TRequest, TResponse> SpawnStruct<TActor, TRequest, TResponse>(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRefStruct<TActor, TRequest, TResponse> SpawnStructWithOptions<TActor, TRequest, TResponse>(string? name, ActorRunnerOptions? options, params object[]? args)
         where TActor : IActorStruct<TRequest, TResponse> where TRequest : struct where TResponse : struct
     {
         ActorRepositoryStruct<TActor, TRequest, TResponse> repository = GetRepositoryStruct<TActor, TRequest, TResponse>();
 
-        return repository.Spawn(name, options, args);
+        return repository.SpawnWithOptions(name, options, args);
     }
 
     /// <summary>
@@ -173,12 +173,12 @@ public sealed class ActorSystem : IDisposable
     /// <summary>
     /// Creates a new fire-n-forget struct actor with options (e.g. a bounded inbox) and returns a typed reference.
     /// </summary>
-    public IActorRefStruct<TActor, TRequest> SpawnStruct<TActor, TRequest>(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRefStruct<TActor, TRequest> SpawnStructWithOptions<TActor, TRequest>(string? name, ActorRunnerOptions? options, params object[]? args)
         where TActor : IActorStruct<TRequest> where TRequest : struct
     {
         ActorRepositoryStruct<TActor, TRequest> repository = GetRepositoryStruct<TActor, TRequest>();
 
-        return repository.Spawn(name, options, args);
+        return repository.SpawnWithOptions(name, options, args);
     }
 
     /// <summary>
@@ -201,12 +201,12 @@ public sealed class ActorSystem : IDisposable
     /// <summary>
     /// Creates a new request/response aggregate actor with options (e.g. a bounded inbox) and returns a typed reference.
     /// </summary>
-    public IActorRefAggregate<TActor, TRequest, TResponse> SpawnAggregate<TActor, TRequest, TResponse>(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRefAggregate<TActor, TRequest, TResponse> SpawnAggregateWithOptions<TActor, TRequest, TResponse>(string? name, ActorRunnerOptions? options, params object[]? args)
         where TActor : IActorAggregate<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         ActorRepositoryAggregate<TActor, TRequest, TResponse> repository = GetRepositoryAggregate<TActor, TRequest, TResponse>();
 
-        return repository.Spawn(name, options, args);
+        return repository.SpawnWithOptions(name, options, args);
     }
 
     /// <summary>

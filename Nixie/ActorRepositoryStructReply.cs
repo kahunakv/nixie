@@ -95,9 +95,9 @@ public sealed class ActorRepositoryStruct<TActor, TRequest, TResponse> : IActorR
     /// <returns></returns>
     /// <exception cref="NixieException"></exception>
     public IActorRefStruct<TActor, TRequest, TResponse> Spawn(string? name = null, params object[]? args)
-        => Spawn(name, null, args);
+        => SpawnWithOptions(name, null, args);
 
-    public IActorRefStruct<TActor, TRequest, TResponse> Spawn(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRefStruct<TActor, TRequest, TResponse> SpawnWithOptions(string? name, ActorRunnerOptions? options, params object[]? args)
     {
         if (!string.IsNullOrEmpty(name))
         {
@@ -112,18 +112,19 @@ public sealed class ActorRepositoryStruct<TActor, TRequest, TResponse> : IActorR
         }
 
         int? maxInboxSize = options?.MaxInboxSize;
+        Func<object, bool>? isControlMessage = options?.IsControlMessage;
 
         Lazy<(ActorRunnerStruct<TActor, TRequest, TResponse> runner, ActorRefStruct<TActor, TRequest, TResponse> actorRef)> actor = actors.GetOrAdd(
             name,
-            (string name) => new(() => CreateInternal(name, maxInboxSize, args))
+            (string name) => new(() => CreateInternal(name, maxInboxSize, isControlMessage, args))
         );
 
         return actor.Value.actorRef;
     }
 
-    private (ActorRunnerStruct<TActor, TRequest, TResponse>, ActorRefStruct<TActor, TRequest, TResponse>) CreateInternal(string name, int? maxInboxSize, params object[]? args)
+    private (ActorRunnerStruct<TActor, TRequest, TResponse>, ActorRefStruct<TActor, TRequest, TResponse>) CreateInternal(string name, int? maxInboxSize, Func<object, bool>? isControlMessage, params object[]? args)
     {
-        ActorRunnerStruct<TActor, TRequest, TResponse> runner = new(actorSystem, logger, name, maxInboxSize);
+        ActorRunnerStruct<TActor, TRequest, TResponse> runner = new(actorSystem, logger, name, maxInboxSize, isControlMessage);
 
         ActorRefStruct<TActor, TRequest, TResponse>? actorRef = (ActorRefStruct<TActor, TRequest, TResponse>?)Activator.CreateInstance(typeof(ActorRefStruct<TActor, TRequest, TResponse>), runner);
 

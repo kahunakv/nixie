@@ -95,9 +95,9 @@ public sealed class ActorRepositoryAggregate<TActor, TRequest> : IActorRepositor
     /// <returns></returns>
     /// <exception cref="NixieException"></exception>
     public IActorRefAggregate<TActor, TRequest> Spawn(string? name = null, params object[]? args)
-        => Spawn(name, null, args);
+        => SpawnWithOptions(name, null, args);
 
-    public IActorRefAggregate<TActor, TRequest> Spawn(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRefAggregate<TActor, TRequest> SpawnWithOptions(string? name, ActorRunnerOptions? options, params object[]? args)
     {
         if (!string.IsNullOrEmpty(name))
         {

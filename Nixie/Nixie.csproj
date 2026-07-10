@@ -9,15 +9,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>Nixie</PackageId>
-    <Version>1.1.7</Version>
+    <Version>1.2.1</Version>
     <Description>A Lightweight Actor Model Implementation for C#/.NET</Description>
     <Authors>Andres Gutierrez</Authors>
     <Company>Andres Gutierrez</Company>    
     <InvariantGlobalization>true</InvariantGlobalization>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageDescription>Lightweight Actor system</PackageDescription>
-    <PackageProjectUrl>https://github.com/andresgutierrez/nixie</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/andresgutierrez/nixie</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/kahunakv/nixie</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/kahunakv/nixie</RepositoryUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>nyx;Nyx;orleans;grains;grain;akka;actors;actor model;Akka;concurrency</PackageTags>
   </PropertyGroup>

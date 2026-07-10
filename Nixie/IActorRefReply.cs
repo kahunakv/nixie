@@ -66,4 +66,32 @@ public interface IActorRef<TActor, TRequest, TResponse> where TActor : IActor<TR
     /// <param name="sender"></param>
     /// <returns></returns>
     public Task<TResponse?> Ask(TRequest message, IGenericActorRef sender, TimeSpan timeout);
+
+    /// <summary>
+    /// Sends a message to the actor and expects a response, cancelling the wait if the token trips.
+    /// A message cancelled before it is processed is never delivered to the actor.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public Task<TResponse?> Ask(TRequest message, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Sends a message to the actor and expects a response, cancelling the wait on timeout or token trip.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="timeout"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public Task<TResponse?> Ask(TRequest message, TimeSpan timeout, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Sends a message to the actor and expects a response, specifying the sender, cancelling the wait if
+    /// the token trips.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="sender"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public Task<TResponse?> Ask(TRequest message, IGenericActorRef sender, CancellationToken cancellationToken);
 }

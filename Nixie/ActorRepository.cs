@@ -95,9 +95,9 @@ public sealed class ActorRepository<TActor, TRequest> : IActorRepositoryRunnable
     /// <returns></returns>
     /// <exception cref="NixieException"></exception>
     public IActorRef<TActor, TRequest> Spawn(string? name = null, params object[]? args)
-        => Spawn(name, null, args);
+        => SpawnWithOptions(name, null, args);
 
-    public IActorRef<TActor, TRequest> Spawn(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRef<TActor, TRequest> SpawnWithOptions(string? name, ActorRunnerOptions? options, params object[]? args)
     {
         if (!string.IsNullOrEmpty(name))
         {

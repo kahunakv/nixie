@@ -77,24 +77,27 @@ public sealed class ActorRef<TActor, TRequest, TResponse> : IGenericActorRef, IA
     /// <exception cref="AskTimeoutException"></exception>
     public async Task<TResponse?> Ask(TRequest message, TimeSpan timeout)
     {
-        using CancellationTokenSource timeoutCancellationTokenSource = new();
+        TaskCompletionSource<TResponse?> promise = runner.SendAndTryDeliver(message, null, null);
 
-        TaskCompletionSource<TResponse?> completionSource = runner.SendAndTryDeliver(message, null, null);
+        using CancellationTokenSource timeoutCancellationTokenSource = new(timeout);
 
-        Task<TResponse?> task = completionSource.Task;
-
-        Task completedTask = await Task.WhenAny(
-            task,
-            Task.Delay(timeout, timeoutCancellationTokenSource.Token)
+        CancellationTokenRegistration registration = timeoutCancellationTokenSource.Token.Register(
+            static state => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(),
+            promise
         );
 
-        if (completedTask == task)
+        try
         {
-            await timeoutCancellationTokenSource.CancelAsync();
-            return await task;
+            return await promise.Task;
         }
-
-        throw new AskTimeoutException($"Timeout after {timeout} waiting for a reply");
+        catch (OperationCanceledException) when (timeoutCancellationTokenSource.IsCancellationRequested)
+        {
+            throw new AskTimeoutException($"Timeout after {timeout} waiting for a reply");
+        }
+        finally
+        {
+            registration.Dispose();
+        }
     }
 
     /// <summary>
@@ -121,23 +124,124 @@ public sealed class ActorRef<TActor, TRequest, TResponse> : IGenericActorRef, IA
     /// <exception cref="AskTimeoutException"></exception>
     public async Task<TResponse?> Ask(TRequest message, IGenericActorRef sender, TimeSpan timeout)
     {
-        using CancellationTokenSource timeoutCancellationTokenSource = new();
+        TaskCompletionSource<TResponse?> promise = runner.SendAndTryDeliver(message, sender, null);
 
-        TaskCompletionSource<TResponse?> completionSource = runner.SendAndTryDeliver(message, sender, null);
+        using CancellationTokenSource timeoutCancellationTokenSource = new(timeout);
 
-        Task<TResponse?> task = completionSource.Task;
-
-        Task completedTask = await Task.WhenAny(
-            task,
-            Task.Delay(timeout, timeoutCancellationTokenSource.Token)
+        CancellationTokenRegistration registration = timeoutCancellationTokenSource.Token.Register(
+            static state => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(),
+            promise
         );
 
-        if (completedTask == task)
+        try
         {
-            await timeoutCancellationTokenSource.CancelAsync();
-            return await task;
+            return await promise.Task;
         }
+        catch (OperationCanceledException) when (timeoutCancellationTokenSource.IsCancellationRequested)
+        {
+            throw new AskTimeoutException($"Timeout after {timeout} waiting for a reply");
+        }
+        finally
+        {
+            registration.Dispose();
+        }
+    }
 
-        throw new AskTimeoutException($"Timeout after {timeout} waiting for a reply");
+    /// <summary>
+    /// Sends a message to the actor and expects a response, cancelling the wait if the token trips.
+    /// If the token trips before the actor has started processing the message, the message is skipped
+    /// and never delivered; if it trips while the handler is already running, the handler completes but
+    /// the returned task is still cancelled. Completes as cancelled with an <see cref="OperationCanceledException"/>.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public async Task<TResponse?> Ask(TRequest message, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        TaskCompletionSource<TResponse?> promise = runner.SendAndTryDeliver(message, null, null);
+
+        CancellationTokenRegistration registration = cancellationToken.Register(
+            static state => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(),
+            promise
+        );
+
+        try
+        {
+            return await promise.Task;
+        }
+        finally
+        {
+            registration.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Sends a message to the actor and expects a response, cancelling the wait when either the timeout
+    /// elapses (surfacing <see cref="AskTimeoutException"/>) or the token trips (surfacing
+    /// <see cref="OperationCanceledException"/>).
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="timeout"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    /// <exception cref="AskTimeoutException"></exception>
+    public async Task<TResponse?> Ask(TRequest message, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        TaskCompletionSource<TResponse?> promise = runner.SendAndTryDeliver(message, null, null);
+
+        using CancellationTokenSource timeoutCancellationTokenSource = new(timeout);
+        using CancellationTokenSource linkedCancellationTokenSource =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCancellationTokenSource.Token);
+
+        CancellationTokenRegistration registration = linkedCancellationTokenSource.Token.Register(
+            static state => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(),
+            promise
+        );
+
+        try
+        {
+            return await promise.Task;
+        }
+        catch (OperationCanceledException) when (timeoutCancellationTokenSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new AskTimeoutException($"Timeout after {timeout} waiting for a reply");
+        }
+        finally
+        {
+            registration.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Sends a message to the actor expecting a response, specifying the sender, cancelling the wait if the
+    /// token trips. Completes as cancelled with an <see cref="OperationCanceledException"/>.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="sender"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public async Task<TResponse?> Ask(TRequest message, IGenericActorRef sender, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        TaskCompletionSource<TResponse?> promise = runner.SendAndTryDeliver(message, sender, null);
+
+        CancellationTokenRegistration registration = cancellationToken.Register(
+            static state => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(),
+            promise
+        );
+
+        try
+        {
+            return await promise.Task;
+        }
+        finally
+        {
+            registration.Dispose();
+        }
     }
 }

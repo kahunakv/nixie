@@ -20,13 +20,19 @@ public sealed class ActorRunnerAggregate<TActor, TRequest, TResponse>
 
     private readonly int? maxInboxSize;
 
+    private readonly Func<object, bool>? isControlMessage;
+
     private const int LargeBatchCapacityThreshold = 4096;
 
     private readonly ConcurrentQueue<ActorMessageReply<TRequest, TResponse>> inbox = new();
-    
+
+    private readonly ConcurrentQueue<ActorMessageReply<TRequest, TResponse>> controlInbox = new();
+
     private List<ActorMessageReply<TRequest, TResponse>> messages = [];
 
     private int pendingMessageCount;
+
+    private int pendingControlMessageCount;
     
     private TaskCompletionSource? gracefulShutdown;
 
@@ -42,12 +48,12 @@ public sealed class ActorRunnerAggregate<TActor, TRequest, TResponse>
     /// <summary>
     /// Returns true if the actor's inbox is empty
     /// </summary>
-    public bool IsEmpty => inbox.IsEmpty;
+    public bool IsEmpty => inbox.IsEmpty && controlInbox.IsEmpty;
 
     /// <summary>
-    /// Returns the number of messages in the inbox
+    /// Returns the number of messages in the inbox (ordinary + control)
     /// </summary>
-    public int MessageCount => Volatile.Read(ref pendingMessageCount);
+    public int MessageCount => Volatile.Read(ref pendingMessageCount) + Volatile.Read(ref pendingControlMessageCount);
 
     /// <summary>
     /// The reference to the actor.
@@ -75,11 +81,12 @@ public sealed class ActorRunnerAggregate<TActor, TRequest, TResponse>
     /// <param name="actorSystem"></param>
     /// <param name="logger"></param>
     /// <param name="name"></param>
-    public ActorRunnerAggregate(ActorSystem actorSystem, ILogger? logger, string name, int? maxInboxSize = null)
+    public ActorRunnerAggregate(ActorSystem actorSystem, ILogger? logger, string name, int? maxInboxSize = null, Func<object, bool>? isControlMessage = null)
     {
         this.actorSystem = actorSystem;
         this.logger = logger;
         this.maxInboxSize = maxInboxSize;
+        this.isControlMessage = isControlMessage;
 
         Name = name;
     }
@@ -122,22 +129,32 @@ public sealed class ActorRunnerAggregate<TActor, TRequest, TResponse>
             returnPromise = parentReply.Value.Promise;
         }
 
-        if (maxInboxSize.HasValue)
+        // Control messages are exempt from maxInboxSize and delivered ahead of ordinary messages, so a
+        // completion that resolves an already-admitted request is never rejected.
+        if (isControlMessage is not null && isControlMessage(message))
         {
-            int newCount = Interlocked.Increment(ref pendingMessageCount);
-            if (newCount > maxInboxSize.Value)
-            {
-                Interlocked.Decrement(ref pendingMessageCount);
-                returnPromise.TrySetException(new ActorBusyException(Name, newCount - 1, maxInboxSize.Value));
-                return returnPromise;
-            }
+            Interlocked.Increment(ref pendingControlMessageCount);
+            controlInbox.Enqueue(messageReply);
         }
         else
         {
-            Interlocked.Increment(ref pendingMessageCount);
-        }
+            if (maxInboxSize.HasValue)
+            {
+                int newCount = Interlocked.Increment(ref pendingMessageCount);
+                if (newCount > maxInboxSize.Value)
+                {
+                    Interlocked.Decrement(ref pendingMessageCount);
+                    returnPromise.TrySetException(new ActorBusyException(Name, newCount - 1, maxInboxSize.Value));
+                    return returnPromise;
+                }
+            }
+            else
+            {
+                Interlocked.Increment(ref pendingMessageCount);
+            }
 
-        inbox.Enqueue(messageReply);
+            inbox.Enqueue(messageReply);
+        }
 
         if (1 == Interlocked.Exchange(ref processing, 0))
             _ = DeliverMessages();
@@ -166,7 +183,7 @@ public sealed class ActorRunnerAggregate<TActor, TRequest, TResponse>
     /// <returns></returns>
     public async ValueTask<bool> GracefulShutdown(TimeSpan maxWait)
     {
-        if (inbox.IsEmpty)
+        if (IsEmpty)
             return Shutdown();
 
         if (gracefulShutdown is not null)
@@ -213,12 +230,22 @@ public sealed class ActorRunnerAggregate<TActor, TRequest, TResponse>
                     if (shutdown == 0)
                         break;
 
-                    while (inbox.TryDequeue(out ActorMessageReply<TRequest, TResponse> message))
+                    // Control messages are dequeued ahead of ordinary ones, so they land first in the batch
+                    // handed to the handler and overtake a backlog of normal requests.
+                    while (TryDequeueNext(out ActorMessageReply<TRequest, TResponse> message, out bool isControl))
                     {
-                        Interlocked.Decrement(ref pendingMessageCount);
+                        if (isControl)
+                            Interlocked.Decrement(ref pendingControlMessageCount);
+                        else
+                            Interlocked.Decrement(ref pendingMessageCount);
 
                         if (shutdown == 0)
                             break;
+
+                        // The caller cancelled or timed out before this message was batched; its promise is
+                        // already completed, so leave it out of the batch (the handler never sees it).
+                        if (message.Promise.Task.IsCompleted)
+                            continue;
 
                         if (ActorContext is not null)
                         {
@@ -246,11 +273,11 @@ public sealed class ActorRunnerAggregate<TActor, TRequest, TResponse>
                         TrimBatchListIfNeeded();
                     }
 
-                } while (!inbox.IsEmpty);
+                } while (!IsEmpty);
 
                 Interlocked.Exchange(ref processing, 1);
 
-                if (inbox.IsEmpty || shutdown == 0)
+                if (IsEmpty || shutdown == 0)
                     break;
 
                 if (Interlocked.Exchange(ref processing, 0) == 1)
@@ -265,6 +292,28 @@ public sealed class ActorRunnerAggregate<TActor, TRequest, TResponse>
         {
             logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
         }
+    }
+
+    /// <summary>
+    /// Dequeues the next message to batch, preferring the control queue over the ordinary one so control
+    /// messages overtake a backlog of normal requests. Returns false when both queues are empty.
+    /// </summary>
+    private bool TryDequeueNext(out ActorMessageReply<TRequest, TResponse> message, out bool isControl)
+    {
+        if (controlInbox.TryDequeue(out message))
+        {
+            isControl = true;
+            return true;
+        }
+
+        if (inbox.TryDequeue(out message))
+        {
+            isControl = false;
+            return true;
+        }
+
+        isControl = false;
+        return false;
     }
 
     private void TrimBatchListIfNeeded()

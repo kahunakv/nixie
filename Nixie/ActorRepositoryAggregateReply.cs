@@ -96,9 +96,9 @@ public sealed class ActorRepositoryAggregate<TActor, TRequest, TResponse> : IAct
     /// <returns></returns>
     /// <exception cref="NixieException"></exception>
     public IActorRefAggregate<TActor, TRequest, TResponse> Spawn(string? name = null, params object[]? args)
-        => Spawn(name, null, args);
+        => SpawnWithOptions(name, null, args);
 
-    public IActorRefAggregate<TActor, TRequest, TResponse> Spawn(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRefAggregate<TActor, TRequest, TResponse> SpawnWithOptions(string? name, ActorRunnerOptions? options, params object[]? args)
     {
         if (!string.IsNullOrEmpty(name))
         {
@@ -113,18 +113,19 @@ public sealed class ActorRepositoryAggregate<TActor, TRequest, TResponse> : IAct
         }
 
         int? maxInboxSize = options?.MaxInboxSize;
+        Func<object, bool>? isControlMessage = options?.IsControlMessage;
 
         Lazy<(ActorRunnerAggregate<TActor, TRequest, TResponse> runner, ActorRefAggregate<TActor, TRequest, TResponse> actorRef)> actor = actors.GetOrAdd(
             name,
-            (string _) => new(() => CreateInternal(name, maxInboxSize, args))
+            (string _) => new(() => CreateInternal(name, maxInboxSize, isControlMessage, args))
         );
 
         return actor.Value.actorRef;
     }
 
-    private (ActorRunnerAggregate<TActor, TRequest, TResponse>, ActorRefAggregate<TActor, TRequest, TResponse>) CreateInternal(string name, int? maxInboxSize, params object[]? args)
+    private (ActorRunnerAggregate<TActor, TRequest, TResponse>, ActorRefAggregate<TActor, TRequest, TResponse>) CreateInternal(string name, int? maxInboxSize, Func<object, bool>? isControlMessage, params object[]? args)
     {
-        ActorRunnerAggregate<TActor, TRequest, TResponse> runner = new(actorSystem, logger, name, maxInboxSize);
+        ActorRunnerAggregate<TActor, TRequest, TResponse> runner = new(actorSystem, logger, name, maxInboxSize, isControlMessage);
 
         ActorRefAggregate<TActor, TRequest, TResponse>? actorRef = (ActorRefAggregate<TActor, TRequest, TResponse>?)Activator.CreateInstance(typeof(ActorRefAggregate<TActor, TRequest, TResponse>), runner);
 
