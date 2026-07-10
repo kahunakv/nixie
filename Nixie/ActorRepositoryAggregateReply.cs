@@ -140,10 +140,7 @@ public sealed class ActorRepositoryAggregate<TActor, TRequest, TResponse> : IAct
     {
         ActorRunnerAggregate<TActor, TRequest, TResponse> runner = new(actorSystem, logger, name, maxInboxSize, isControlMessage);
 
-        ActorRefAggregate<TActor, TRequest, TResponse>? actorRef = (ActorRefAggregate<TActor, TRequest, TResponse>?)Activator.CreateInstance(typeof(ActorRefAggregate<TActor, TRequest, TResponse>), runner);
-
-        if (actorRef is null)
-            throw new NixieException("Invalid actor props");
+        ActorRefAggregate<TActor, TRequest, TResponse> actorRef = new(runner);
 
         ActorAggregateContext<TActor, TRequest, TResponse> actorContext = new(actorSystem, logger, actorRef);
 

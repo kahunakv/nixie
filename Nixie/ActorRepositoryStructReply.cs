@@ -144,10 +144,7 @@ public sealed class ActorRepositoryStruct<TActor, TRequest, TResponse> : IActorR
     {
         ActorRunnerStruct<TActor, TRequest, TResponse> runner = new(actorSystem, logger, name, maxInboxSize, isControlMessage);
 
-        ActorRefStruct<TActor, TRequest, TResponse>? actorRef = (ActorRefStruct<TActor, TRequest, TResponse>?)Activator.CreateInstance(typeof(ActorRefStruct<TActor, TRequest, TResponse>), runner);
-
-        if (actorRef is null)
-            throw new NixieException("Invalid props");
+        ActorRefStruct<TActor, TRequest, TResponse> actorRef = new(runner);
 
         ActorContextStruct<TActor, TRequest, TResponse> actorContext = new(actorSystem, logger, actorRef);
 

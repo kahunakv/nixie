@@ -111,11 +111,25 @@ public class BalancingActor<TActor, TRequest> : IActor<TRequest>
             return Task.CompletedTask;
         }
         
-        // Step 3. Find a router with the least number of queued messages
-        IActorRef<TActor, TRequest> leastLoaded = instances
-            .OrderBy(q => q.Runner.MessageCount)
-            .First();
-        
+        // Step 3. Find a router with the least number of queued messages.
+        // Single O(n) pass instead of an O(n log n) LINQ sort; the strict `<` keeps the first minimum,
+        // matching the stable OrderBy(...).First() tie-break. MessageCount is an approximate concurrent
+        // metric, so it is read once per instance.
+        IActorRef<TActor, TRequest> leastLoaded = instances[0];
+        int leastLoadedCount = leastLoaded.Runner.MessageCount;
+
+        for (int i = 1; i < instances.Count; i++)
+        {
+            IActorRef<TActor, TRequest> instance = instances[i];
+            int count = instance.Runner.MessageCount;
+
+            if (count < leastLoadedCount)
+            {
+                leastLoaded = instance;
+                leastLoadedCount = count;
+            }
+        }
+
         leastLoaded.Send(message);
 
         return Task.CompletedTask;

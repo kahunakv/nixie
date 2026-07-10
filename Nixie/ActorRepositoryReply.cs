@@ -139,10 +139,7 @@ public sealed class ActorRepository<TActor, TRequest, TResponse> : IActorReposit
     {
         ActorRunner<TActor, TRequest, TResponse> runner = new(actorSystem, logger, name, maxInboxSize, isControlMessage);
 
-        ActorRef<TActor, TRequest, TResponse>? actorRef = (ActorRef<TActor, TRequest, TResponse>?)Activator.CreateInstance(typeof(ActorRef<TActor, TRequest, TResponse>), runner);
-
-        if (actorRef is null)
-            throw new NixieException("Invalid props");
+        ActorRef<TActor, TRequest, TResponse> actorRef = new(runner);
 
         ActorContext<TActor, TRequest, TResponse> actorContext = new(actorSystem, logger, actorRef);
 

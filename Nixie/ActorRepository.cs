@@ -125,10 +125,7 @@ public sealed class ActorRepository<TActor, TRequest> : IActorRepositoryRunnable
     {
         ActorRunner<TActor, TRequest> runner = new(actorSystem, logger, name, maxInboxSize);
 
-        ActorRef<TActor, TRequest>? actorRef = (ActorRef<TActor, TRequest>?)Activator.CreateInstance(typeof(ActorRef<TActor, TRequest>), runner);
-
-        if (actorRef is null)
-            throw new NixieException("Invalid actor props");
+        ActorRef<TActor, TRequest> actorRef = new(runner);
 
         ActorContext<TActor, TRequest> actorContext = new(actorSystem, logger, actorRef);
 
