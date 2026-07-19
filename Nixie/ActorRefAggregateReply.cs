@@ -54,6 +54,32 @@ public sealed class ActorRefAggregate<TActor, TRequest, TResponse> : IGenericAct
     }
 
     /// <summary>
+    /// Fire-and-forget send that returns its admission result. Returns <c>true</c> when the message was
+    /// enqueued (ordinary or control inbox) and <c>false</c> when it was rejected and never processed — the
+    /// ordinary inbox was at <c>MaxInboxSize</c>, or the runner is shut down. A <c>false</c> is safe to retry:
+    /// the message was never delivered. Unlike <see cref="Send(TRequest)"/>, no reply promise is allocated, so
+    /// a rejection leaves no unobserved task behind.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <returns></returns>
+    public bool TrySend(TRequest message)
+    {
+        return Runner.TrySend(message, null);
+    }
+
+    /// <summary>
+    /// Fire-and-forget send with an explicit sender that returns its admission result.
+    /// See <see cref="TrySend(TRequest)"/>.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="sender"></param>
+    /// <returns></returns>
+    public bool TrySend(TRequest message, IGenericActorRef sender)
+    {
+        return Runner.TrySend(message, sender);
+    }
+
+    /// <summary>
     /// Sends a message to actor expecting a response and without specifying a sender
     /// </summary>
     /// <param name="message"></param>

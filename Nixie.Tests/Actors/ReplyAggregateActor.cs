@@ -29,7 +29,7 @@ public sealed class ReplyAggregateActor : IActorAggregate<string, string>
         {
             IncrMessage(message.Request);
             
-            message.Promise.SetResult(message.Request);
+            message.Promise!.SetResult(message.Request);
         }
 
         return Task.CompletedTask;

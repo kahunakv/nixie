@@ -54,7 +54,7 @@ public sealed class PriorityAggregateActor : IActorAggregate<PriorityRequest, Pr
             if (!message.Request.IsControl)
                 await Task.Delay(500);
 
-            message.Promise.TrySetResult(new PriorityResponse { Id = message.Request.Id });
+            message.Promise!.TrySetResult(new PriorityResponse { Id = message.Request.Id });
         }
     }
 }
@@ -152,7 +152,7 @@ public sealed class SelfCompletingReadActor : IActor<ReadRequest, ReadResponse>
         }
 
         // User read: defer the reply, stash the promise, schedule a detached completion.
-        TaskCompletionSource<ReadResponse?> readPromise = context.Reply!.Value.Promise;
+        TaskCompletionSource<ReadResponse?> readPromise = context.Reply!.Value.Promise!;
         context.ByPassReply = true;
         Admitted++;
 

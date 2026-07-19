@@ -11,7 +11,7 @@ public sealed class PongAggregateActor : IActorAggregate<string, string>
     public Task Receive(List<ActorMessageReply<string, string>> messages)
     {
         foreach (ActorMessageReply<string, string> x in messages)
-            x.Promise.SetResult(x.Request);
+            x.Promise!.SetResult(x.Request);
 
         return Task.CompletedTask;
     }
@@ -45,7 +45,7 @@ public sealed class PingAggregateActor : IActorAggregate<string, string>
         foreach (ActorMessageReply<string, string> x in messages)
         {
             string? pongReply = await pongRef.Ask(x.Request, TimeSpan.FromSeconds(2));
-            x.Promise.SetResult(pongReply);
+            x.Promise!.SetResult(pongReply);
         }
     }
 }

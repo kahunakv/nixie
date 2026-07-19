@@ -35,6 +35,22 @@ public interface IActorRefStruct<TActor, TRequest, TResponse> where TActor : IAc
     public void Send(TRequest message, ActorMessageReply<TRequest, TResponse>? parentPromise);
 
     /// <summary>
+    /// Fire-and-forget send that returns its admission result: <c>true</c> if enqueued, <c>false</c> if
+    /// rejected (inbox full or runner shut down) and never processed. A <c>false</c> is safe to retry.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <returns></returns>
+    public bool TrySend(TRequest message);
+
+    /// <summary>
+    /// Fire-and-forget send with an explicit sender that returns its admission result.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="sender"></param>
+    /// <returns></returns>
+    public bool TrySend(TRequest message, IGenericActorRef sender);
+
+    /// <summary>
     /// Sends a message to the actor and expects a response
     /// </summary>
     /// <param name="message"></param>

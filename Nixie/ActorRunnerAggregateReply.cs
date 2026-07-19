@@ -105,8 +105,8 @@ public sealed class ActorRunnerAggregate<TActor, TRequest, TResponse>
         {
             if (parentReply.HasValue)
             {
-                parentReply.Value.Promise.TrySetCanceled(CancellationToken.None);
-                return parentReply.Value.Promise;
+                parentReply.Value.Promise!.TrySetCanceled(CancellationToken.None);
+                return parentReply.Value.Promise!;
             }
 
             TaskCompletionSource<TResponse?> canceledPromise = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -126,7 +126,7 @@ public sealed class ActorRunnerAggregate<TActor, TRequest, TResponse>
         else
         {
             messageReply = parentReply.Value;
-            returnPromise = parentReply.Value.Promise;
+            returnPromise = parentReply.Value.Promise!;
         }
 
         // Control messages are exempt from maxInboxSize and delivered ahead of ordinary messages, so a
@@ -160,6 +160,55 @@ public sealed class ActorRunnerAggregate<TActor, TRequest, TResponse>
             _ = DeliverMessages();
 
         return returnPromise;
+    }
+
+    /// <summary>
+    /// Fire-and-forget admission: enqueues a message without allocating a reply promise and returns whether
+    /// it was admitted. Returns <c>false</c> (and enqueues nothing) when the runner is shut down or when the
+    /// ordinary inbox is at <c>MaxInboxSize</c>; a <c>false</c> means the message was never delivered, so it
+    /// is safe to retry. Control messages are exempt from the bound and are always admitted on a live runner.
+    /// Admission is per-message (batching happens at drain time); a promise-free entry simply joins the batch
+    /// and is never replied to. Because no promise is allocated, no reject path leaves an unobserved task behind.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="sender"></param>
+    /// <returns></returns>
+    public bool TrySend(TRequest message, IGenericActorRef? sender)
+    {
+        if (shutdown == 0)
+            return false;
+
+        ActorMessageReply<TRequest, TResponse> messageReply = new(message, sender);
+
+        // Control messages are exempt from maxInboxSize and batched ahead of ordinary messages.
+        if (isControlMessage is not null && isControlMessage(message))
+        {
+            Interlocked.Increment(ref pendingControlMessageCount);
+            controlInbox.Enqueue(messageReply);
+        }
+        else
+        {
+            if (maxInboxSize.HasValue)
+            {
+                int newCount = Interlocked.Increment(ref pendingMessageCount);
+                if (newCount > maxInboxSize.Value)
+                {
+                    Interlocked.Decrement(ref pendingMessageCount);
+                    return false;
+                }
+            }
+            else
+            {
+                Interlocked.Increment(ref pendingMessageCount);
+            }
+
+            inbox.Enqueue(messageReply);
+        }
+
+        if (1 == Interlocked.Exchange(ref processing, 0))
+            _ = DeliverMessages();
+
+        return true;
     }
 
     /// <summary>
@@ -244,7 +293,8 @@ public sealed class ActorRunnerAggregate<TActor, TRequest, TResponse>
 
                         // The caller cancelled or timed out before this message was batched; its promise is
                         // already completed, so leave it out of the batch (the handler never sees it).
-                        if (message.Promise.Task.IsCompleted)
+                        // A promise-free (TrySend) message has no promise and is always batched.
+                        if (message.Promise is not null && message.Promise.Task.IsCompleted)
                             continue;
 
                         if (ActorContext is not null)
