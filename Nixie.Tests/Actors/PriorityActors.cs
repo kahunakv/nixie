@@ -54,7 +54,8 @@ public sealed class PriorityAggregateActor : IActorAggregate<PriorityRequest, Pr
             if (!message.Request.IsControl)
                 await Task.Delay(500);
 
-            message.Promise!.TrySetResult(new PriorityResponse { Id = message.Request.Id });
+            // A Send/TrySend-delivered message carries no promise; only reply to Ask-delivered ones.
+            message.Promise?.TrySetResult(new PriorityResponse { Id = message.Request.Id });
         }
     }
 }

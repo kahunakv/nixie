@@ -3,6 +3,8 @@ Nixie/obj
 Nixie/.vs
 Nixie.Tests/bin
 Nixie.Tests/obj
+Nixie.Benchmarks/bin/
+Nixie.Benchmarks/obj
 .vs/
 .DS_Store
 .idea

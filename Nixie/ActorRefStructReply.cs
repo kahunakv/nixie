@@ -27,22 +27,25 @@ public sealed class ActorRefStruct<TActor, TRequest, TResponse> : IGenericActorR
     }
 
     /// <summary>
-    /// Passes a message to the actor without expecting a response and without specifying a sender
+    /// Passes a message to the actor without expecting a response and without specifying a sender.
+    /// Uses the promise-free admission path, so no reply promise is allocated and a rejected message (full
+    /// bounded inbox, or a shut-down runner) is dropped without leaving an unobserved task behind.
     /// </summary>
     /// <param name="message"></param>
     public void Send(TRequest message)
     {
-        runner.SendAndTryDeliver(message, null, null);
+        runner.TrySend(message, null);
     }
 
     /// <summary>
-    /// Passes a message to the actor without expecting a response and specifying a sender
+    /// Passes a message to the actor without expecting a response and specifying a sender.
+    /// Uses the promise-free admission path (see <see cref="Send(TRequest)"/>).
     /// </summary>
     /// <param name="message"></param>
     /// <param name="sender"></param>
     public void Send(TRequest message, IGenericActorRef sender)
     {
-        runner.SendAndTryDeliver(message, sender, null);
+        runner.TrySend(message, sender);
     }
 
     /// <summary>

@@ -17,6 +17,8 @@ Actors process messages asynchronously and encapsulate their own state. Callers 
 - **Strongly typed actors:** request and response types are expressed in actor interfaces and actor references.
 - **Fire-and-forget actors:** implement `IActor<TRequest>` and receive messages with `Send`.
 - **Request/response actors:** implement `IActor<TRequest, TResponse>` and receive messages with `Ask` or `Send`.
+- **Backpressure:** bound a reply actor's inbox with `MaxInboxSize`; over-capacity `Ask` throws a retryable `ActorBusyException`, and `TrySend` reports admission as a `bool`.
+- **Priority control messages:** mark messages with `IsControlMessage` so they bypass the inbox bound and are delivered ahead of the ordinary backlog.
 - **Struct message support:** use `IActorStruct<TRequest>` and `IActorStruct<TRequest, TResponse>` with `SpawnStruct` to avoid reference-type messages.
 - **Aggregate actors:** use `IActorAggregate<TRequest>` or `IActorAggregate<TRequest, TResponse>` to process queued messages in batches.
 - **Routers:** round-robin and consistent-hash routers are available for class and struct actors.
@@ -42,13 +44,13 @@ The package targets `net8.0`.
 Using the .NET CLI:
 
 ```shell
-dotnet add package Nixie --version 1.2.2
+dotnet add package Nixie --version 1.2.3
 ```
 
 Using the NuGet Package Manager Console:
 
 ```shell
-Install-Package Nixie -Version 1.2.2
+Install-Package Nixie -Version 1.2.3
 ```
 
 ## Basic Usage
@@ -175,6 +177,69 @@ await system.Wait();
 ```
 
 Aggregate request/response actors implement `IActorAggregate<TRequest, TResponse>` and receive `List<ActorMessageReply<TRequest, TResponse>>`.
+
+## Backpressure And Admission
+
+Reply, struct-reply, and aggregate-reply actors can bound their inbox with `ActorRunnerOptions.MaxInboxSize`. Pass the options through the `*WithOptions` spawn methods.
+
+```csharp
+IActorRef<WorkerActor, WorkItem, WorkResult> worker =
+    system.SpawnWithOptions<WorkerActor, WorkItem, WorkResult>("worker", new ActorRunnerOptions
+    {
+        MaxInboxSize = 1000
+    });
+```
+
+When the inbox is full, `Ask` throws a retryable `ActorBusyException` — the message was never delivered, so it is safe to retry.
+
+```csharp
+try
+{
+    WorkResult? result = await worker.Ask(new WorkItem("job-1"));
+}
+catch (ActorBusyException)
+{
+    // Inbox at capacity; back off and retry.
+}
+```
+
+### TrySend
+
+`TrySend` is a fire-and-forget send that reports its admission result instead of throwing, without awaiting per-message processing. It returns `true` when the message was enqueued and `false` when it was rejected and never processed (the inbox was at `MaxInboxSize`, or the runner is shut down). A `false` is safe to retry.
+
+```csharp
+if (!worker.TrySend(new WorkItem("job-1")))
+{
+    // Rejected before delivery — release any reserved resources and retry later.
+}
+```
+
+Unlike `void Send`, `TrySend` allocates no reply promise, so a rejection never leaves an unobserved faulted task behind. An unbounded, live actor always returns `true`. `TrySend` is available on the reply, struct-reply, and aggregate-reply actor references, with an optional sender overload.
+
+### Priority Control Messages
+
+`ActorRunnerOptions.IsControlMessage` marks a message as a priority *control* message. Control messages are exempt from `MaxInboxSize` (never rejected for capacity) and are delivered ahead of ordinary queued messages, so a completion can resolve an already-admitted request even while the inbox is saturated.
+
+```csharp
+IActorRef<HotKeyActor, Op, OpResult> actor =
+    system.SpawnWithOptions<HotKeyActor, Op, OpResult>("hot", new ActorRunnerOptions
+    {
+        MaxInboxSize = 100,
+        IsControlMessage = m => ((Op)m).IsCompletion
+    });
+```
+
+For struct actors, use `ActorRunnerOptions<TRequest>` to supply a strongly typed predicate that avoids boxing the request:
+
+```csharp
+new ActorRunnerOptions<MyStructOp>
+{
+    MaxInboxSize = 100,
+    IsControlMessage = op => op.IsCompletion   // no boxing
+};
+```
+
+FIFO ordering is preserved within each class (ordinary and control); ordering across the two classes is intentionally relaxed so control messages can overtake the backlog.
 
 ## Actor Context
 

@@ -176,6 +176,60 @@ public sealed class TestTrySend
         }
     }
 
+    // ---- void Send now uses the promise-free path: dropping on a full bounded runner leaks no task ----
+
+    [Fact]
+    public async Task TestSendOnFullBoundedRunnerDropsWithoutUnobservedTask()
+    {
+        int unobserved = 0;
+        EventHandler<UnobservedTaskExceptionEventArgs> handler = (_, e) =>
+        {
+            Interlocked.Increment(ref unobserved);
+            e.SetObserved();
+        };
+
+        TaskScheduler.UnobservedTaskException += handler;
+        try
+        {
+            using ActorSystem asx = new();
+
+            TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            IActorRef<GatedReplyActor, TrySendRequest, TrySendResponse> actor =
+                asx.SpawnWithOptions<GatedReplyActor, TrySendRequest, TrySendResponse>("send-burst", new ActorRunnerOptions
+                {
+                    MaxInboxSize = 2
+                }, gate);
+
+            actor.Send(new TrySendRequest { Id = "n0" });   // admitted, blocks the drainer
+            await WaitUntilInFlight(actor);
+
+            actor.Send(new TrySendRequest { Id = "n1" });   // fills the bounded inbox
+            actor.Send(new TrySendRequest { Id = "n2" });
+
+            // Previously each of these faulted a discarded promise with ActorBusyException -> unobserved task.
+            for (int i = 0; i < 500; i++)
+                actor.Send(new TrySendRequest { Id = $"drop{i}" });
+
+            gate.SetResult();
+            await asx.Wait();
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            Assert.Equal(0, Volatile.Read(ref unobserved));
+
+            GatedReplyActor impl = (GatedReplyActor)actor.Runner.Actor!;
+            Assert.Equal(3, impl.Processed.Count);          // only the admitted three ran
+            Assert.Equal(0, actor.Runner.MessageCount);
+        }
+        finally
+        {
+            TaskScheduler.UnobservedTaskException -= handler;
+        }
+    }
+
     // ---- Struct-reply runner: at capacity, ordinary rejected, control admitted ----
 
     [Fact]
