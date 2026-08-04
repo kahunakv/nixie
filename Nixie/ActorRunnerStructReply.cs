@@ -96,6 +96,21 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
     /// <returns></returns>
     public TaskCompletionSource<TResponse> SendAndTryDeliver(TRequest message, IGenericActorRef? sender, ActorMessageReply<TRequest, TResponse>? parentReply)
     {
+        // A forwarded fire-and-forget message (admitted via TrySend) carries no promise; keep it
+        // promise-free through the forward and report the admission outcome on a detached promise,
+        // instead of dereferencing the missing parent promise below.
+        if (parentReply.HasValue && parentReply.Value.Promise is null)
+        {
+            TaskCompletionSource<TResponse> statusPromise = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            if (TrySend(message, sender))
+                statusPromise.TrySetResult(default);
+            else
+                statusPromise.TrySetCanceled(CancellationToken.None);
+
+            return statusPromise;
+        }
+
         if (shutdown == 0)
         {
             if (parentReply.HasValue)
@@ -151,8 +166,15 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
             inbox.Enqueue(messageReply);
         }
 
+        // Task.Run keeps the drain loop off the sender's thread (a direct call would run Receive
+        // synchronously up to its first await on the caller).
         if (1 == Interlocked.Exchange(ref processing, 0))
-            _ = DeliverMessages();
+            Task.Run(DeliverMessages);
+
+        // If Shutdown() raced with the admission check above, the message may have been enqueued
+        // after the shutdown sweep; sweep again so no admitted promise is left uncompleted.
+        if (shutdown == 0)
+            DrainAndCancelPending();
 
         return returnPromise;
     }
@@ -200,8 +222,15 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
             inbox.Enqueue(messageReply);
         }
 
+        // Task.Run keeps the drain loop off the sender's thread (a direct call would run Receive
+        // synchronously up to its first await on the caller).
         if (1 == Interlocked.Exchange(ref processing, 0))
-            _ = DeliverMessages();
+            Task.Run(DeliverMessages);
+
+        // If Shutdown() raced with the admission check above, the message may have been enqueued
+        // after the shutdown sweep; sweep again so no queued message outlives the shutdown.
+        if (shutdown == 0)
+            DrainAndCancelPending();
 
         return true;
     }
@@ -215,9 +244,30 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
         bool success = 1 == Interlocked.Exchange(ref shutdown, 0);
 
         if (success)
+        {
+            DrainAndCancelPending();
+
             ActorContext?.PostShutdown();
+        }
 
         return success;
+    }
+
+    /// <summary>
+    /// Sweeps both inboxes once the actor is shut down, cancelling every pending promise so no
+    /// Ask caller is left awaiting forever, and keeping the pending counts accurate.
+    /// </summary>
+    private void DrainAndCancelPending()
+    {
+        while (TryDequeueNext(out ActorMessageReply<TRequest, TResponse> message, out bool isControl))
+        {
+            if (isControl)
+                Interlocked.Decrement(ref pendingControlMessageCount);
+            else
+                Interlocked.Decrement(ref pendingMessageCount);
+
+            message.Promise?.TrySetCanceled(CancellationToken.None);
+        }
     }
 
     /// <summary>
@@ -230,20 +280,29 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
         if (IsEmpty)
             return Shutdown();
 
-        if (gracefulShutdown is not null)
+        TaskCompletionSource drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        if (Interlocked.CompareExchange(ref gracefulShutdown, drained, null) is not null)
             return false;
 
-        gracefulShutdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The delivery loop may have drained the inboxes and passed its completion check before the
+        // signal above was published; without this re-check the caller would wait the full timeout.
+        if (IsEmpty)
+        {
+            Shutdown();
+            return true;
+        }
 
         Task timeout = Task.Delay(maxWait);
 
         Task completed = await Task.WhenAny(
             timeout,
-            gracefulShutdown.Task
+            drained.Task
         );
 
-        if (completed == timeout)
-            Shutdown();
+        // Shutdown in both outcomes: a drained inbox must still stop the actor (reject further
+        // sends and run PostShutdown), and a timeout forces the stop.
+        Shutdown();
 
         return completed != timeout;
     }
@@ -281,7 +340,12 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
         {
             if (Actor is null || ActorContext is null || shutdown == 0)
             {
-                gracefulShutdown?.SetResult();
+                // Restore the idle latch: the sender flipped it to schedule this turn, and without
+                // this a turn that no-ops (actor not wired up yet) would leave the runner unable
+                // to ever schedule another turn — the mailbox would fill forever.
+                Interlocked.Exchange(ref processing, 1);
+
+                gracefulShutdown?.TrySetResult();
                 return;
             }
 
@@ -299,7 +363,12 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
                         Interlocked.Decrement(ref pendingMessageCount);
 
                     if (shutdown == 0 || ActorContext is null)
+                    {
+                        // The message was dequeued but will never be delivered; cancel its promise
+                        // so the caller doesn't await forever.
+                        message.Promise?.TrySetCanceled(CancellationToken.None);
                         break;
+                    }
 
                     // The caller cancelled or timed out before this message reached the head of the
                     // queue; its promise is already completed, so skip delivery (the handler never runs).
@@ -341,7 +410,10 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
                 break;
             }
 
-            gracefulShutdown?.SetResult();
+            // Only signal drain completion when the inboxes are actually empty (or shutdown swept them);
+            // on a hand-off break another loop owns the remaining messages and will signal instead.
+            if (IsEmpty || shutdown == 0)
+                gracefulShutdown?.TrySetResult();
         }
         catch (Exception ex)
         {

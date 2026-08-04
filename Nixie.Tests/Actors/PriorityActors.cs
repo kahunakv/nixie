@@ -105,6 +105,26 @@ public sealed class AllocProbeStructActor : IActorStruct<AllocProbeRequest, int>
     public Task<int> Receive(AllocProbeRequest message) => Task.FromResult(message.Id);
 }
 
+/// <summary>
+/// Gated variant for the allocation-comparison test: Receive parks on the gate until released, so the
+/// whole send loop runs while the delivery loop is suspended and the measured thread sees only
+/// send-path allocations.
+/// </summary>
+public sealed class AllocProbeGatedStructActor : IActorStruct<AllocProbeRequest, int>
+{
+    private readonly TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public AllocProbeGatedStructActor(IActorContextStruct<AllocProbeGatedStructActor, AllocProbeRequest, int> _) { }
+
+    public void Release() => gate.TrySetResult();
+
+    public async Task<int> Receive(AllocProbeRequest message)
+    {
+        await gate.Task;
+        return message.Id;
+    }
+}
+
 public sealed class ReadRequest
 {
     public required string Kind { get; init; }   // "read" (user request) or "resume" (control completion)

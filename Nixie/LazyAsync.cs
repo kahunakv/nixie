@@ -58,27 +58,21 @@ public class LazyTask<T> : INotifyCompletion
     /// <param name="continuation"></param>
     public void OnCompleted(Action continuation)
     {
+        IAsyncStateMachine? stateMachine;
+
         lock (syncObj)
         {
-            if (asyncStateMachine != null)
-            {
-                try
-                {
-                    asyncStateMachine.MoveNext();
-                }
-                finally
-                {
-                    asyncStateMachine = null;
-                }
-            }
+            stateMachine = asyncStateMachine;
+            asyncStateMachine = null;
 
-            if (continuation == null)
-                this.continuation = continuation;
-            else
-                this.continuation += continuation;
-
-            TryCallContinuation();
+            this.continuation += continuation;
         }
+
+        // The lazy body (MoveNext) and any continuations run outside the lock: both execute
+        // arbitrary user code, which must not be invoked while holding syncObj (deadlock risk).
+        stateMachine?.MoveNext();
+
+        TryCallContinuation();
     }
 
     /// <summary>
@@ -93,8 +87,9 @@ public class LazyTask<T> : INotifyCompletion
         {
             this.result = result;
             IsCompleted = true;
-            TryCallContinuation();
         }
+
+        TryCallContinuation();
     }
 
     internal void SetException(Exception exception)
@@ -103,27 +98,36 @@ public class LazyTask<T> : INotifyCompletion
         {
             this.exception = exception;
             IsCompleted = true;
-            TryCallContinuation();
         }
+
+        TryCallContinuation();
     }
 
     internal void SetStateMachine(IAsyncStateMachine stateMachine)
     {
-        asyncStateMachine = stateMachine;
+        // Published under the same lock OnCompleted reads it with; an unfenced write could let a
+        // first await on another thread observe null and never start the lazy body.
+        lock (syncObj)
+        {
+            asyncStateMachine = stateMachine;
+        }
     }
 
     private void TryCallContinuation()
     {
-        if (IsCompleted && continuation != null)
+        Action? toRun;
+
+        // The claim is atomic under the lock (so a completer and an awaiter can both call in and
+        // the continuations run exactly once), but the invocation happens outside it.
+        lock (syncObj)
         {
-            try
-            {
-                continuation();
-            }
-            finally
-            {
-                continuation = null;
-            }
+            if (!IsCompleted || continuation == null)
+                return;
+
+            toRun = continuation;
+            continuation = null;
         }
+
+        toRun();
     }
 }

@@ -100,26 +100,33 @@ public sealed class ActorRepository<TActor, TRequest, TResponse> : IActorReposit
     public IActorRef<TActor, TRequest, TResponse> SpawnWithOptions(string? name, ActorRunnerOptions? options, params object[]? args)
     {
         if (!string.IsNullOrEmpty(name))
-        {
             name = name.ToLowerInvariant();
-
-            if (actors.ContainsKey(name))
-                throw new NixieException("Actor already exists");
-        }
         else
-        {
             name = Guid.NewGuid().ToString();
-        }
 
         int? maxInboxSize = options?.MaxInboxSize;
         Func<object, bool>? isControlMessage = ResolveControlPredicate(options);
 
-        Lazy<(ActorRunner<TActor, TRequest, TResponse> runner, ActorRef<TActor, TRequest, TResponse> actorRef)> actor = actors.GetOrAdd(
-            name,
-            (string _) => new(() => CreateInternal(name, maxInboxSize, isControlMessage, args))
-        );
+        Lazy<(ActorRunner<TActor, TRequest, TResponse> runner, ActorRef<TActor, TRequest, TResponse> actorRef)> created = new(() => CreateInternal(name, maxInboxSize, isControlMessage, args));
+        Lazy<(ActorRunner<TActor, TRequest, TResponse> runner, ActorRef<TActor, TRequest, TResponse> actorRef)> actor = actors.GetOrAdd(name, created);
 
-        return actor.Value.actorRef;
+        // Identity check instead of a separate ContainsKey: two concurrent spawns of the same name
+        // race deterministically — exactly one wins and the loser throws, instead of silently
+        // receiving an actor built with the winner's constructor args.
+        if (!ReferenceEquals(actor, created))
+            throw new NixieException("Actor already exists");
+
+        try
+        {
+            return actor.Value.actorRef;
+        }
+        catch
+        {
+            // A throwing actor constructor must not poison the name: Lazy caches the exception, so
+            // the entry would otherwise reject every re-spawn and rethrow on every Get forever.
+            actors.TryRemove(name, out _);
+            throw;
+        }
     }
 
     /// <summary>
@@ -202,16 +209,17 @@ public sealed class ActorRepository<TActor, TRequest, TResponse> : IActorReposit
 
         if (actors.TryGetValue(name, out Lazy<(ActorRunner<TActor, TRequest, TResponse> runner, ActorRef<TActor, TRequest, TResponse> actorRef)>? actor))
         {
-            if (actor.Value.runner.Shutdown())
-            {
-                actorSystem.StopAllTimers(actor.Value.actorRef);
-                actors.TryRemove(name, out _);
-                return true;
-            }
+            bool wasShutdown = actor.Value.runner.Shutdown();
+
+            // Removed even when another path already shut the runner down, so a dead actor can't
+            // stay resolvable via Get or block re-spawning its name.
+            actorSystem.StopAllTimers(actor.Value.actorRef);
+            actors.TryRemove(name, out _);
+            return wasShutdown;
         }
 
         return true;
-    }    
+    }
 
     /// <summary>
     /// Shutdowns an actor by its reference
@@ -224,12 +232,11 @@ public sealed class ActorRepository<TActor, TRequest, TResponse> : IActorReposit
 
         if (actors.TryGetValue(name, out Lazy<(ActorRunner<TActor, TRequest, TResponse> runner, ActorRef<TActor, TRequest, TResponse> actorRef)>? actor))
         {
-            if (actor.Value.runner.Shutdown())
-            {
-                actors.TryRemove(name, out _);
-                actorSystem.StopAllTimers(actor.Value.actorRef);
-                return true;
-            }
+            bool wasShutdown = actor.Value.runner.Shutdown();
+
+            actorSystem.StopAllTimers(actor.Value.actorRef);
+            actors.TryRemove(name, out _);
+            return wasShutdown;
         }
 
         return true;
@@ -280,12 +287,30 @@ public sealed class ActorRepository<TActor, TRequest, TResponse> : IActorReposit
     public async Task GracefulShutdownAll(TimeSpan maxWait)
     {
         List<Task<bool>> tasks = new(actors.Count);
+        List<string> names = new(actors.Count);
 
         foreach (KeyValuePair<string, Lazy<(ActorRunner<TActor, TRequest, TResponse> runner, ActorRef<TActor, TRequest, TResponse> actorRef)>> kv in actors)
+        {
+            names.Add(kv.Key);
             tasks.Add(kv.Value.Value.runner.GracefulShutdown(maxWait).AsTask());
+        }
 
         await Task.WhenAll(tasks).ConfigureAwait(false);
 
-        actors.Clear();
+        // Remove only what this call shut down: Clear() would silently discard (and leave running)
+        // actors spawned while the drain was in progress.
+        foreach (string name in names)
+            actors.TryRemove(name, out _);
+    }
+
+    public void ShutdownAll()
+    {
+        foreach (KeyValuePair<string, Lazy<(ActorRunner<TActor, TRequest, TResponse> runner, ActorRef<TActor, TRequest, TResponse> actorRef)>> kv in actors)
+        {
+            actors.TryRemove(kv.Key, out _);
+
+            if (kv.Value.IsValueCreated)
+                kv.Value.Value.runner.Shutdown();
+        }
     }
 }

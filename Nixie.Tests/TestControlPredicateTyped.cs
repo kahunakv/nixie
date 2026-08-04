@@ -92,14 +92,14 @@ public sealed class TestControlPredicateTyped
         const int count = 50_000;
 
         // Warm both paths so JIT compilation doesn't skew the measured runs.
-        await Drain(useTyped: true, warmup);
-        await Drain(useTyped: false, warmup);
+        await MeasureDrain(useTyped: true, warmup);
+        await MeasureDrain(useTyped: false, warmup);
 
         long typedBytes = await MeasureDrain(useTyped: true, count);
         long untypedBytes = await MeasureDrain(useTyped: false, count);
 
-        // Every other allocation on the send/drain path is identical between the two runs, so the difference
-        // is the per-message struct box in the untyped classifier.
+        // Every other allocation on the measured send path is identical between the two runs, so the
+        // difference is the per-message struct box in the untyped classifier.
         Assert.True(untypedBytes > typedBytes,
             $"typed path should allocate less; typed={typedBytes} untyped={untypedBytes}");
         Assert.True(untypedBytes - typedBytes > count * 8L,
@@ -107,14 +107,6 @@ public sealed class TestControlPredicateTyped
     }
 
     private static async Task<long> MeasureDrain(bool useTyped, int count)
-    {
-        long before = GC.GetTotalAllocatedBytes(precise: true);
-        await Drain(useTyped, count);
-        long after = GC.GetTotalAllocatedBytes(precise: true);
-        return after - before;
-    }
-
-    private static async Task Drain(bool useTyped, int count)
     {
         using ActorSystem asx = new();
 
@@ -124,12 +116,24 @@ public sealed class TestControlPredicateTyped
             ? new ActorRunnerOptions<AllocProbeRequest> { IsControlMessage = static r => r.IsControl }
             : new ActorRunnerOptions { IsControlMessage = static o => ((AllocProbeRequest)o).IsControl };
 
-        IActorRefStruct<AllocProbeStructActor, AllocProbeRequest, int> actor =
-            asx.SpawnStructWithOptions<AllocProbeStructActor, AllocProbeRequest, int>(null, options);
+        IActorRefStruct<AllocProbeGatedStructActor, AllocProbeRequest, int> actor =
+            asx.SpawnStructWithOptions<AllocProbeGatedStructActor, AllocProbeRequest, int>(null, options);
+
+        // Park the delivery loop on the actor's gate before measuring: delivery runs on pool threads
+        // and its wakeup count varies run to run, which would otherwise swamp the boxing delta.
+        actor.Send(new AllocProbeRequest { Id = -1, IsControl = true });
+
+        // Measure only this thread: the classifier (and the untyped path's per-message box) runs here.
+        long before = GC.GetAllocatedBytesForCurrentThread();
 
         for (int i = 0; i < count; i++)
             actor.Send(new AllocProbeRequest { Id = i, IsControl = true });
 
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        ((AllocProbeGatedStructActor)actor.Runner.Actor!).Release();
         await asx.Wait();
+
+        return allocated;
     }
 }

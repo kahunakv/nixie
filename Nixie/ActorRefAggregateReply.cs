@@ -117,7 +117,7 @@ public sealed class ActorRefAggregate<TActor, TRequest, TResponse> : IGenericAct
         using CancellationTokenSource timeoutCancellationTokenSource = new(timeout);
 
         CancellationTokenRegistration registration = timeoutCancellationTokenSource.Token.Register(
-            static state => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(),
+            static (state, token) => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(token),
             promise
         );
 
@@ -125,7 +125,7 @@ public sealed class ActorRefAggregate<TActor, TRequest, TResponse> : IGenericAct
         {
             return await promise.Task;
         }
-        catch (OperationCanceledException) when (timeoutCancellationTokenSource.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (ex.CancellationToken == timeoutCancellationTokenSource.Token)
         {
             throw new AskTimeoutException($"Timeout after {timeout} waiting for a reply");
         }
@@ -170,7 +170,7 @@ public sealed class ActorRefAggregate<TActor, TRequest, TResponse> : IGenericAct
         using CancellationTokenSource timeoutCancellationTokenSource = new(timeout);
 
         CancellationTokenRegistration registration = timeoutCancellationTokenSource.Token.Register(
-            static state => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(),
+            static (state, token) => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(token),
             promise
         );
 
@@ -178,7 +178,7 @@ public sealed class ActorRefAggregate<TActor, TRequest, TResponse> : IGenericAct
         {
             return await promise.Task;
         }
-        catch (OperationCanceledException) when (timeoutCancellationTokenSource.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (ex.CancellationToken == timeoutCancellationTokenSource.Token)
         {
             throw new AskTimeoutException($"Timeout after {timeout} waiting for a reply");
         }
@@ -203,7 +203,7 @@ public sealed class ActorRefAggregate<TActor, TRequest, TResponse> : IGenericAct
         TaskCompletionSource<TResponse?> promise = Runner.SendAndTryDeliver(message, null, null);
 
         CancellationTokenRegistration registration = cancellationToken.Register(
-            static state => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(),
+            static (state, token) => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(token),
             promise
         );
 
@@ -237,7 +237,7 @@ public sealed class ActorRefAggregate<TActor, TRequest, TResponse> : IGenericAct
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCancellationTokenSource.Token);
 
         CancellationTokenRegistration registration = linkedCancellationTokenSource.Token.Register(
-            static state => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(),
+            static (state, token) => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(token),
             promise
         );
 
@@ -245,7 +245,7 @@ public sealed class ActorRefAggregate<TActor, TRequest, TResponse> : IGenericAct
         {
             return await promise.Task;
         }
-        catch (OperationCanceledException) when (timeoutCancellationTokenSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (ex.CancellationToken == linkedCancellationTokenSource.Token && timeoutCancellationTokenSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
             throw new AskTimeoutException($"Timeout after {timeout} waiting for a reply");
         }
@@ -270,7 +270,7 @@ public sealed class ActorRefAggregate<TActor, TRequest, TResponse> : IGenericAct
         TaskCompletionSource<TResponse?> promise = Runner.SendAndTryDeliver(message, sender, null);
 
         CancellationTokenRegistration registration = cancellationToken.Register(
-            static state => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(),
+            static (state, token) => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(token),
             promise
         );
 

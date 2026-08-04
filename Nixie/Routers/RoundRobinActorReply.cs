@@ -37,6 +37,9 @@ public class RoundRobinActor<TActor, TRequest, TResponse> : IActor<TRequest, TRe
     /// <param name="numberInstances"></param>
     public RoundRobinActor(IActorContext<RoundRobinActor<TActor, TRequest, TResponse>, TRequest, TResponse> context, int numberInstances)
     {
+        if (numberInstances < 1)
+            throw new NixieException("A router must have at least one routee.");
+
         this.context = context;
 
         instances.Capacity = numberInstances;
@@ -52,8 +55,13 @@ public class RoundRobinActor<TActor, TRequest, TResponse> : IActor<TRequest, TRe
     /// <param name="instances"></param>
     public RoundRobinActor(IActorContext<RoundRobinActor<TActor, TRequest, TResponse>, TRequest, TResponse> context, List<IActorRef<TActor, TRequest, TResponse>> instances)
     {
+        if (instances is null || instances.Count == 0)
+            throw new NixieException("A router must have at least one routee.");
+
         this.context = context;
-        this.instances = instances;
+
+        // Copied so a caller mutating its own list afterwards cannot race the router thread.
+        this.instances = [.. instances];
     }
 
     /// <summary>

@@ -107,8 +107,15 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
 
         inbox.Enqueue(new ActorMessage<TRequest>(message, sender));
 
+        // Task.Run keeps the drain loop off the sender's thread (a direct call would run Receive
+        // synchronously up to its first await on the caller).
         if (1 == Interlocked.Exchange(ref processing, 0))
-            _ = DeliverMessages();
+            Task.Run(DeliverMessages);
+
+        // If Shutdown() raced with the admission check above, the message may have been enqueued
+        // after the shutdown sweep; sweep again so the pending count stays accurate.
+        if (shutdown == 0)
+            DrainPendingMessages();
     }
 
     /// <summary>
@@ -120,9 +127,23 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
         bool success = 1 == Interlocked.Exchange(ref shutdown, 0);
 
         if (success)
+        {
+            DrainPendingMessages();
+
             ActorContext?.PostShutdown();
+        }
 
         return success;
+    }
+
+    /// <summary>
+    /// Discards any messages still queued once the actor is shut down so the pending count
+    /// stays accurate and queued requests are released.
+    /// </summary>
+    private void DrainPendingMessages()
+    {
+        while (inbox.TryDequeue(out _))
+            Interlocked.Decrement(ref pendingMessageCount);
     }
 
     /// <summary>
@@ -135,20 +156,29 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
         if (inbox.IsEmpty)
             return Shutdown();
 
-        if (gracefulShutdown is not null)
+        TaskCompletionSource drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        if (Interlocked.CompareExchange(ref gracefulShutdown, drained, null) is not null)
             return false;
 
-        gracefulShutdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The delivery loop may have drained the inbox and passed its completion check before the
+        // signal above was published; without this re-check the caller would wait the full timeout.
+        if (inbox.IsEmpty)
+        {
+            Shutdown();
+            return true;
+        }
 
         Task timeout = Task.Delay(maxWait);
 
         Task completed = await Task.WhenAny(
             timeout,
-            gracefulShutdown.Task
+            drained.Task
         );
 
-        if (completed == timeout)
-            Shutdown();
+        // Shutdown in both outcomes: a drained inbox must still stop the actor (reject further
+        // sends and run PostShutdown), and a timeout forces the stop.
+        Shutdown();
 
         return completed != timeout;
     }
@@ -164,7 +194,12 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
         {
             if (Actor is null || ActorContext is null || shutdown == 0)
             {
-                gracefulShutdown?.SetResult();
+                // Restore the idle latch: the sender flipped it to schedule this turn, and without
+                // this a turn that no-ops (actor not wired up yet) would leave the runner unable
+                // to ever schedule another turn — the mailbox would fill forever.
+                Interlocked.Exchange(ref processing, 1);
+
+                gracefulShutdown?.TrySetResult();
                 return;
             }
 
@@ -223,7 +258,15 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
                 break;
             }
 
-            gracefulShutdown?.SetResult();
+            // A shutdown that interrupted batch collection leaves undelivered requests behind;
+            // release them so they aren't pinned for the runner's lifetime.
+            if (shutdown == 0 && messages.Count > 0)
+                messages.Clear();
+
+            // Only signal drain completion when the inbox is actually empty (or shutdown swept it);
+            // on a hand-off break another loop owns the remaining messages and will signal instead.
+            if (inbox.IsEmpty || shutdown == 0)
+                gracefulShutdown?.TrySetResult();
         }
         catch (Exception ex)
         {

@@ -106,7 +106,7 @@ public static class ActorSystemExtensionsStruct
     /// <param name="instances"></param>
     /// <returns></returns>
     public static IActorRefStruct<RoundRobinActorStruct<TActor, TRequest, TResponse>, TRequest, TResponse>
-        CreateRoundRobinRouter<TActor, TRequest, TResponse>(
+        CreateRoundRobinRouterStruct<TActor, TRequest, TResponse>(
             this ActorSystem actorSystem,
             int instances
         )

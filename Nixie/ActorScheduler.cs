@@ -9,7 +9,7 @@ namespace Nixie;
 /// </summary>
 public class ActorScheduler : IDisposable
 {
-    private static int sequence;
+    private long sequence;
 
     private readonly ActorSystem actorSystem;
 
@@ -38,11 +38,16 @@ public class ActorScheduler : IDisposable
     public Timer StartPeriodicTimer<TActor, TRequest>(IActorRef<TActor, TRequest> actorRef, string name, TRequest request, TimeSpan initialDelay, TimeSpan interval)
         where TActor : IActor<TRequest> where TRequest : class
     {
-        if (periodicTimers.ContainsKey(name))
+        Lazy<ConcurrentDictionary<string, Lazy<Timer>>> timers = periodicTimers.GetOrAdd(actorRef, (_) => new());
+        Lazy<Timer> created = new(() => AddPeriodicTimerInternal(actorRef, request, initialDelay, interval));
+        Lazy<Timer> timer = timers.Value.GetOrAdd(name, created);
+
+        // Identity check on the GetOrAdd result: a pre-existing entry means a timer with this name
+        // is already active for this actor. (The old guard compared the name against the
+        // actorRef-keyed outer map and could never fire.)
+        if (!ReferenceEquals(timer, created))
             throw new NixieException("There is already an active timer with this name.");
 
-        Lazy<ConcurrentDictionary<string, Lazy<Timer>>> timers = periodicTimers.GetOrAdd(actorRef, (_) => new());
-        Lazy<Timer> timer = timers.Value.GetOrAdd(name, (string _) => new(() => AddPeriodicTimerInternal(actorRef, request, initialDelay, interval)));
         return timer.Value;
     }
 
@@ -62,11 +67,13 @@ public class ActorScheduler : IDisposable
     public Timer StartPeriodicTimer<TActor, TRequest, TResponse>(IActorRef<TActor, TRequest, TResponse> actorRef, string name, TRequest request, TimeSpan initialDelay, TimeSpan interval)
         where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
-        if (periodicTimers.ContainsKey(name))
+        Lazy<ConcurrentDictionary<string, Lazy<Timer>>> timers = periodicTimers.GetOrAdd(actorRef, (_) => new());
+        Lazy<Timer> created = new(() => AddPeriodicTimerInternal(actorRef, request, initialDelay, interval));
+        Lazy<Timer> timer = timers.Value.GetOrAdd(name, created);
+
+        if (!ReferenceEquals(timer, created))
             throw new NixieException("There is already an active timer with this name.");
 
-        Lazy<ConcurrentDictionary<string, Lazy<Timer>>> timers = periodicTimers.GetOrAdd(actorRef, (_) => new());
-        Lazy<Timer> timer = timers.Value.GetOrAdd(name, (string _) => new(() => AddPeriodicTimerInternal(actorRef, request, initialDelay, interval)));
         return timer.Value;
     }
     
@@ -83,14 +90,16 @@ public class ActorScheduler : IDisposable
     public Timer StartPeriodicTimerStruct<TActor, TRequest>(IActorRefStruct<TActor, TRequest> actorRef, string name, TRequest request, TimeSpan initialDelay, TimeSpan interval)
         where TActor : IActorStruct<TRequest> where TRequest : struct
     {
-        if (periodicTimers.ContainsKey(name))
+        Lazy<ConcurrentDictionary<string, Lazy<Timer>>> timers = periodicTimers.GetOrAdd(actorRef, (_) => new());
+        Lazy<Timer> created = new(() => AddPeriodicTimerInternalStruct(actorRef, request, initialDelay, interval));
+        Lazy<Timer> timer = timers.Value.GetOrAdd(name, created);
+
+        if (!ReferenceEquals(timer, created))
             throw new NixieException("There is already an active timer with this name.");
 
-        Lazy<ConcurrentDictionary<string, Lazy<Timer>>> timers = periodicTimers.GetOrAdd(actorRef, (_) => new());
-        Lazy<Timer> timer = timers.Value.GetOrAdd(name, (string _) => new(() => AddPeriodicTimerInternalStruct(actorRef, request, initialDelay, interval)));
         return timer.Value;
     }
-    
+
     /// <summary>
     /// Schedules a message to be sent to an actor once after a specified delay at a specified interval.
     /// </summary>
@@ -107,11 +116,13 @@ public class ActorScheduler : IDisposable
     public Timer StartPeriodicTimerStruct<TActor, TRequest, TResponse>(IActorRefStruct<TActor, TRequest, TResponse> actorRef, string name, TRequest request, TimeSpan initialDelay, TimeSpan interval)
         where TActor : IActorStruct<TRequest, TResponse> where TRequest : struct where TResponse : struct
     {
-        if (periodicTimers.ContainsKey(name))
+        Lazy<ConcurrentDictionary<string, Lazy<Timer>>> timers = periodicTimers.GetOrAdd(actorRef, (_) => new());
+        Lazy<Timer> created = new(() => AddPeriodicTimerInternalStruct(actorRef, request, initialDelay, interval));
+        Lazy<Timer> timer = timers.Value.GetOrAdd(name, created);
+
+        if (!ReferenceEquals(timer, created))
             throw new NixieException("There is already an active timer with this name.");
 
-        Lazy<ConcurrentDictionary<string, Lazy<Timer>>> timers = periodicTimers.GetOrAdd(actorRef, (_) => new());
-        Lazy<Timer> timer = timers.Value.GetOrAdd(name, (string _) => new(() => AddPeriodicTimerInternalStruct(actorRef, request, initialDelay, interval)));
         return timer.Value;
     }
 
@@ -201,7 +212,27 @@ public class ActorScheduler : IDisposable
     public Timer ScheduleShutdown<TActor, TRequest, TResponse>(IActorRef<TActor, TRequest, TResponse> actorRef, TimeSpan delay)
         where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
-        return new((state) => actorSystem.Shutdown(actorRef), null, delay, TimeSpan.Zero);
+        // Registered in onceTimers so the Timer stays rooted (System.Threading.Timer is not
+        // self-rooting and could be GC-collected before firing) and is reachable for disposal
+        // by StopAllTimers/Dispose. It removes itself after firing.
+        long seq = Interlocked.Increment(ref sequence);
+        Lazy<ConcurrentDictionary<long, Lazy<Timer>>> timers = onceTimers.GetOrAdd(actorRef, (object _) => new());
+        Lazy<Timer> timer = timers.Value.GetOrAdd(seq, (long _) => new(() => new Timer((state) => ShutdownScheduled(actorRef, seq), null, delay, TimeSpan.Zero)));
+        return timer.Value;
+    }
+
+    private void ShutdownScheduled<TActor, TRequest, TResponse>(IActorRef<TActor, TRequest, TResponse> actorRef, long seq)
+        where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
+    {
+        try
+        {
+            actorSystem.Shutdown(actorRef);
+            RemoveOnceTimer(actorRef, seq);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError("{Ex}", ex.Message);
+        }
     }
     
     /// <summary>
@@ -216,7 +247,24 @@ public class ActorScheduler : IDisposable
     public Timer ScheduleShutdown<TActor, TRequest>(IActorRef<TActor, TRequest> actorRef, TimeSpan delay)
         where TActor : IActor<TRequest> where TRequest : class
     {
-        return new((state) => actorSystem.Shutdown(actorRef), null, delay, TimeSpan.Zero);
+        long seq = Interlocked.Increment(ref sequence);
+        Lazy<ConcurrentDictionary<long, Lazy<Timer>>> timers = onceTimers.GetOrAdd(actorRef, (object _) => new());
+        Lazy<Timer> timer = timers.Value.GetOrAdd(seq, (long _) => new(() => new Timer((state) => ShutdownScheduled(actorRef, seq), null, delay, TimeSpan.Zero)));
+        return timer.Value;
+    }
+
+    private void ShutdownScheduled<TActor, TRequest>(IActorRef<TActor, TRequest> actorRef, long seq)
+        where TActor : IActor<TRequest> where TRequest : class
+    {
+        try
+        {
+            actorSystem.Shutdown(actorRef);
+            RemoveOnceTimer(actorRef, seq);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError("{Ex}", ex.Message);
+        }
     }
 
     /// <summary>
@@ -228,13 +276,13 @@ public class ActorScheduler : IDisposable
     {
         if (periodicTimers.TryGetValue(actorRef, out Lazy<ConcurrentDictionary<string, Lazy<Timer>>>? timers))
         {
-            if (!timers.Value.TryGetValue(name, out Lazy<Timer>? timer))
+            if (!timers.Value.TryRemove(name, out Lazy<Timer>? timer))
                 throw new NixieException("There is no timer with this name.");
 
-            if (timer.IsValueCreated)
-                timer.Value.Dispose();
-
-            timers.Value.TryRemove(name, out _);
+            // Forcing Value (instead of checking IsValueCreated) closes the race with a starter
+            // that inserted the Lazy but has not materialized the Timer yet: skipping it would
+            // leave an unstoppable orphan timer outside the map.
+            timer.Value.Dispose();
         }
     }
 
@@ -248,13 +296,10 @@ public class ActorScheduler : IDisposable
     {
         if (periodicTimers.TryGetValue(actorRef, out Lazy<ConcurrentDictionary<string, Lazy<Timer>>>? timers))
         {
-            if (!timers.Value.TryGetValue(name, out Lazy<Timer>? timer))
+            if (!timers.Value.TryRemove(name, out Lazy<Timer>? timer))
                 throw new NixieException("There is no timer with this name.");
 
-            if (timer.IsValueCreated)
-                timer.Value.Dispose();
-
-            timers.Value.TryRemove(name, out _);
+            timer.Value.Dispose();
         }
     }
 
@@ -304,6 +349,31 @@ public class ActorScheduler : IDisposable
     /// <param name="actorRef"></param>
     public void StopAllTimers<TActor, TRequest, TResponse>(IActorRefStruct<TActor, TRequest, TResponse> actorRef)
         where TActor : IActorStruct<TRequest, TResponse> where TRequest : struct where TResponse : struct
+    {
+        StopAllTimersInternal(actorRef);
+    }
+
+    /// <summary>
+    /// Stops all timers running in an actor
+    /// </summary>
+    /// <typeparam name="TActor"></typeparam>
+    /// <typeparam name="TRequest"></typeparam>
+    /// <param name="actorRef"></param>
+    public void StopAllTimers<TActor, TRequest>(IActorRefAggregate<TActor, TRequest> actorRef)
+        where TActor : IActorAggregate<TRequest> where TRequest : class
+    {
+        StopAllTimersInternal(actorRef);
+    }
+
+    /// <summary>
+    /// Stops all timers running in an actor
+    /// </summary>
+    /// <typeparam name="TActor"></typeparam>
+    /// <typeparam name="TRequest"></typeparam>
+    /// <typeparam name="TResponse"></typeparam>
+    /// <param name="actorRef"></param>
+    public void StopAllTimers<TActor, TRequest, TResponse>(IActorRefAggregate<TActor, TRequest, TResponse> actorRef)
+        where TActor : IActorAggregate<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         StopAllTimersInternal(actorRef);
     }
@@ -363,16 +433,8 @@ public class ActorScheduler : IDisposable
         {
             actorRef.Send(request);
 
-            if (random > -1 && onceTimers.TryGetValue(actorRef, out Lazy<ConcurrentDictionary<long, Lazy<Timer>>>? timers))
-            {
-                if (!timers.Value.TryGetValue(random, out Lazy<Timer>? timer))
-                    return;
-
-                if (timer.IsValueCreated)
-                    timer.Value.Dispose();
-
-                timers.Value.TryRemove(random, out _);
-            }
+            if (random > -1)
+                RemoveOnceTimer(actorRef, random);
         }
         catch (Exception ex)
         {
@@ -387,16 +449,8 @@ public class ActorScheduler : IDisposable
         {
             actorRef.Send(request);
 
-            if (random > -1 && onceTimers.TryGetValue(actorRef, out Lazy<ConcurrentDictionary<long, Lazy<Timer>>>? timers))
-            {
-                if (!timers.Value.TryGetValue(random, out Lazy<Timer>? timer))
-                    return;
-
-                if (timer.IsValueCreated)
-                    timer.Value.Dispose();
-
-                timers.Value.TryRemove(random, out _);
-            }
+            if (random > -1)
+                RemoveOnceTimer(actorRef, random);
         }
         catch (Exception ex)
         {
@@ -411,16 +465,8 @@ public class ActorScheduler : IDisposable
         {
             actorRef.Send(request);
 
-            if (random > -1 && onceTimers.TryGetValue(actorRef, out Lazy<ConcurrentDictionary<long, Lazy<Timer>>>? timers))
-            {
-                if (!timers.Value.TryGetValue(random, out Lazy<Timer>? timer))
-                    return;
-
-                if (timer.IsValueCreated)
-                    timer.Value.Dispose();
-
-                timers.Value.TryRemove(random, out _);
-            }
+            if (random > -1)
+                RemoveOnceTimer(actorRef, random);
         }
         catch (Exception ex)
         {
@@ -435,16 +481,8 @@ public class ActorScheduler : IDisposable
         {
             actorRef.Send(request);
 
-            if (random > -1 && onceTimers.TryGetValue(actorRef, out Lazy<ConcurrentDictionary<long, Lazy<Timer>>>? timers))
-            {
-                if (!timers.Value.TryGetValue(random, out Lazy<Timer>? timer))
-                    return;
-
-                if (timer.IsValueCreated)
-                    timer.Value.Dispose();
-
-                timers.Value.TryRemove(random, out _);
-            }
+            if (random > -1)
+                RemoveOnceTimer(actorRef, random);
         }
         catch (Exception ex)
         {
@@ -452,37 +490,38 @@ public class ActorScheduler : IDisposable
         }
     }
 
+    /// <summary>
+    /// Removes and disposes a once-timer after it fired or when its actor is being stopped.
+    /// </summary>
+    private void RemoveOnceTimer(object actorRef, long seq)
+    {
+        if (!onceTimers.TryGetValue(actorRef, out Lazy<ConcurrentDictionary<long, Lazy<Timer>>>? timers))
+            return;
+
+        if (!timers.Value.TryRemove(seq, out Lazy<Timer>? timer))
+            return;
+
+        // Forcing Value closes the race where this runs before the scheduling thread has
+        // materialized the Lazy: the entry would otherwise leave the map with its timer
+        // still alive and unreachable for disposal.
+        timer.Value.Dispose();
+    }
+
     private void StopAllTimersInternal(object actorRef)
     {
-        if (periodicTimers.TryGetValue(actorRef, out Lazy<ConcurrentDictionary<string, Lazy<Timer>>>? actorPeriodicTimers))
+        if (periodicTimers.TryRemove(actorRef, out Lazy<ConcurrentDictionary<string, Lazy<Timer>>>? actorPeriodicTimers))
         {
-            periodicTimers.TryRemove(actorRef, out _);
-
+            // Value is forced everywhere below (instead of checking IsValueCreated) so a timer whose
+            // Lazy was inserted but not yet materialized by its starter is still disposed rather than
+            // leaked outside the map as an unstoppable orphan.
             foreach (KeyValuePair<string, Lazy<Timer>> periodicTimer in actorPeriodicTimers.Value)
-            {
-                if (periodicTimer.Value.IsValueCreated)
-                    periodicTimer.Value.Value?.Dispose();
-            }
+                periodicTimer.Value.Value.Dispose();
         }
 
-        if (onceTimers.TryGetValue(actorRef, out Lazy<ConcurrentDictionary<long, Lazy<Timer>>>? actorOnceTimers))
+        if (onceTimers.TryRemove(actorRef, out Lazy<ConcurrentDictionary<long, Lazy<Timer>>>? actorOnceTimers))
         {
-            onceTimers.TryRemove(actorRef, out _);
-
-            if (!actorOnceTimers.IsValueCreated)
-                return;
-
             foreach (KeyValuePair<long, Lazy<Timer>> onceTimer in actorOnceTimers.Value)
-            {
-                Lazy<Timer>? lazyTimer = onceTimer.Value;
-                if (lazyTimer is null)
-                    continue;
-
-                if (!lazyTimer.IsValueCreated)
-                    continue;
-
-                lazyTimer.Value.Dispose();
-            }
+                onceTimer.Value.Value.Dispose();
         }
     }
 
@@ -491,11 +530,10 @@ public class ActorScheduler : IDisposable
         foreach (KeyValuePair<object, Lazy<ConcurrentDictionary<string, Lazy<Timer>>>> periodicTimer in periodicTimers)
         {
             foreach (KeyValuePair<string, Lazy<Timer>> timer in periodicTimer.Value.Value)
-            {
-                if (timer.Value.IsValueCreated)
-                    timer.Value.Value.Dispose();
-            }
+                timer.Value.Value.Dispose();
         }
+
+        periodicTimers.Clear();
 
         foreach (KeyValuePair<object, Lazy<ConcurrentDictionary<long, Lazy<Timer>>>> actorOnceTimer in onceTimers)
         {
@@ -503,16 +541,9 @@ public class ActorScheduler : IDisposable
                 continue;
 
             foreach (KeyValuePair<long, Lazy<Timer>> onceTimer in actorOnceTimer.Value.Value)
-            {
-                Lazy<Timer>? lazyTimer = onceTimer.Value;
-                if (lazyTimer is null)
-                    continue;
-
-                if (!lazyTimer.IsValueCreated)
-                    continue;
-
-                lazyTimer.Value.Dispose();
-            }
+                onceTimer.Value.Value.Dispose();
         }
+
+        onceTimers.Clear();
     }
 }

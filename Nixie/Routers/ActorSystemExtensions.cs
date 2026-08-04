@@ -94,7 +94,7 @@ public static class ActorSystemExtensions
             string name,
             int instances
         )
-        where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class
+        where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         return actorSystem.Spawn<RoundRobinActor<TActor, TRequest, TResponse>, TRequest, TResponse>(name, instances);
     }
@@ -113,7 +113,7 @@ public static class ActorSystemExtensions
             this ActorSystem actorSystem,
             int instances
         )
-        where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class
+        where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         return actorSystem.Spawn<RoundRobinActor<TActor, TRequest, TResponse>, TRequest, TResponse>(null, instances);
     }
@@ -134,7 +134,7 @@ public static class ActorSystemExtensions
             string name,
             List<IActorRef<TActor, TRequest, TResponse>> instances
         )
-        where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class
+        where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         return actorSystem.Spawn<RoundRobinActor<TActor, TRequest, TResponse>, TRequest, TResponse>(name, instances);
     }
@@ -153,7 +153,7 @@ public static class ActorSystemExtensions
             this ActorSystem actorSystem,
             List<IActorRef<TActor, TRequest, TResponse>> instances
         )
-        where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class
+        where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         return actorSystem.Spawn<RoundRobinActor<TActor, TRequest, TResponse>, TRequest, TResponse>(null, instances);
     }
@@ -246,7 +246,7 @@ public static class ActorSystemExtensions
             string name,
             int instances
         )
-        where TActor : IActor<TRequest, TResponse> where TRequest : class, IConsistentHashable where TResponse : class
+        where TActor : IActor<TRequest, TResponse> where TRequest : class, IConsistentHashable where TResponse : class?
     {
         return actorSystem.Spawn<ConsistentHashActor<TActor, TRequest, TResponse>, TRequest, TResponse>(name, instances);
     }
@@ -265,7 +265,7 @@ public static class ActorSystemExtensions
             this ActorSystem actorSystem,
             int instances
         )
-        where TActor : IActor<TRequest, TResponse> where TRequest : class, IConsistentHashable where TResponse : class
+        where TActor : IActor<TRequest, TResponse> where TRequest : class, IConsistentHashable where TResponse : class?
     {
         return actorSystem.Spawn<ConsistentHashActor<TActor, TRequest, TResponse>, TRequest, TResponse>(null, instances);
     }
@@ -286,7 +286,7 @@ public static class ActorSystemExtensions
             string name,
             List<IActorRef<TActor, TRequest, TResponse>> instances
         )
-        where TActor : IActor<TRequest, TResponse> where TRequest : class, IConsistentHashable where TResponse : class
+        where TActor : IActor<TRequest, TResponse> where TRequest : class, IConsistentHashable where TResponse : class?
     {
         return actorSystem.Spawn<ConsistentHashActor<TActor, TRequest, TResponse>, TRequest, TResponse>(name, instances);
     }
@@ -305,8 +305,80 @@ public static class ActorSystemExtensions
             this ActorSystem actorSystem,
             List<IActorRef<TActor, TRequest, TResponse>> instances
         )
-        where TActor : IActor<TRequest, TResponse> where TRequest : class, IConsistentHashable where TResponse : class
+        where TActor : IActor<TRequest, TResponse> where TRequest : class, IConsistentHashable where TResponse : class?
     {
         return actorSystem.Spawn<ConsistentHashActor<TActor, TRequest, TResponse>, TRequest, TResponse>(null, instances);
+    }
+
+    /// <summary>
+    /// Creates a Balancing router specifying name and number of instances
+    /// </summary>
+    /// <typeparam name="TActor"></typeparam>
+    /// <typeparam name="TRequest"></typeparam>
+    /// <param name="actorSystem"></param>
+    /// <param name="name"></param>
+    /// <param name="instances"></param>
+    /// <returns></returns>
+    public static IActorRef<BalancingActor<TActor, TRequest>, TRequest> CreateBalancingRouter<TActor, TRequest>(
+        this ActorSystem actorSystem,
+        string name,
+        int instances
+    )
+        where TActor : IActor<TRequest> where TRequest : class
+    {
+        return actorSystem.Spawn<BalancingActor<TActor, TRequest>, TRequest>(name, instances);
+    }
+
+    /// <summary>
+    /// Creates a Balancing router specifying number of instances
+    /// </summary>
+    /// <typeparam name="TActor"></typeparam>
+    /// <typeparam name="TRequest"></typeparam>
+    /// <param name="actorSystem"></param>
+    /// <param name="instances"></param>
+    /// <returns></returns>
+    public static IActorRef<BalancingActor<TActor, TRequest>, TRequest> CreateBalancingRouter<TActor, TRequest>(
+        this ActorSystem actorSystem,
+        int instances
+    )
+        where TActor : IActor<TRequest> where TRequest : class
+    {
+        return actorSystem.Spawn<BalancingActor<TActor, TRequest>, TRequest>(null, instances);
+    }
+
+    /// <summary>
+    /// Creates a Balancing router specifying name and a list of routee actors
+    /// </summary>
+    /// <typeparam name="TActor"></typeparam>
+    /// <typeparam name="TRequest"></typeparam>
+    /// <param name="actorSystem"></param>
+    /// <param name="name"></param>
+    /// <param name="instances"></param>
+    /// <returns></returns>
+    public static IActorRef<BalancingActor<TActor, TRequest>, TRequest> CreateBalancingRouter<TActor, TRequest>(
+        this ActorSystem actorSystem,
+        string name,
+        List<IActorRef<TActor, TRequest>> instances
+    )
+        where TActor : IActor<TRequest> where TRequest : class
+    {
+        return actorSystem.Spawn<BalancingActor<TActor, TRequest>, TRequest>(name, instances);
+    }
+
+    /// <summary>
+    /// Creates a Balancing router specifying a list of routee actors
+    /// </summary>
+    /// <typeparam name="TActor"></typeparam>
+    /// <typeparam name="TRequest"></typeparam>
+    /// <param name="actorSystem"></param>
+    /// <param name="instances"></param>
+    /// <returns></returns>
+    public static IActorRef<BalancingActor<TActor, TRequest>, TRequest> CreateBalancingRouter<TActor, TRequest>(
+        this ActorSystem actorSystem,
+        List<IActorRef<TActor, TRequest>> instances
+    )
+        where TActor : IActor<TRequest> where TRequest : class
+    {
+        return actorSystem.Spawn<BalancingActor<TActor, TRequest>, TRequest>(null, instances);
     }
 }

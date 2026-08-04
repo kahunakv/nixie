@@ -104,22 +104,16 @@ public sealed class ActorRunner<TActor, TRequest> where TActor : IActor<TRequest
 
         inbox.Enqueue(new(message, sender));
 
+        // Task.Run (rather than invoking the async method directly) keeps the drain loop off the
+        // sender's thread: a direct call would run Receive synchronously up to its first await,
+        // blocking the "fire-and-forget" sender and inheriting its locks and execution context.
         if (1 == Interlocked.Exchange(ref processing, 0))
-            _ = DeliverMessages();
+            Task.Run(DeliverMessages);
 
-        /*if (1 == Interlocked.Exchange(ref processing, 0))
-        {
-            if (inbox.IsEmpty)
-                _ = DeliverSingleMessage(new(message, sender));
-            else
-            {
-                inbox.Enqueue(new(message, sender));
-                
-                _ = DeliverMessages();
-            }
-        }
-        else
-            inbox.Enqueue(new(message, sender));*/
+        // If Shutdown() raced with the admission check above, the message may have been enqueued
+        // after the shutdown sweep; sweep again so the pending count stays accurate.
+        if (shutdown == 0)
+            DrainPendingMessages();
     }
 
     /// <summary>
@@ -131,9 +125,23 @@ public sealed class ActorRunner<TActor, TRequest> where TActor : IActor<TRequest
         bool success = 1 == Interlocked.Exchange(ref shutdown, 0);
 
         if (success)
+        {
+            DrainPendingMessages();
+
             ActorContext?.PostShutdown();
+        }
 
         return success;
+    }
+
+    /// <summary>
+    /// Discards any messages still queued once the actor is shut down so the pending count
+    /// stays accurate and queued requests are released.
+    /// </summary>
+    private void DrainPendingMessages()
+    {
+        while (inbox.TryDequeue(out _))
+            Interlocked.Decrement(ref pendingMessageCount);
     }
 
     /// <summary>
@@ -146,20 +154,29 @@ public sealed class ActorRunner<TActor, TRequest> where TActor : IActor<TRequest
         if (inbox.IsEmpty)
             return Shutdown();
 
-        if (gracefulShutdown is not null)
+        TaskCompletionSource drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        if (Interlocked.CompareExchange(ref gracefulShutdown, drained, null) is not null)
             return false;
 
-        gracefulShutdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The delivery loop may have drained the inbox and passed its completion check before the
+        // signal above was published; without this re-check the caller would wait the full timeout.
+        if (inbox.IsEmpty)
+        {
+            Shutdown();
+            return true;
+        }
 
         Task timeout = Task.Delay(maxWait);
 
         Task completed = await Task.WhenAny(
             timeout,
-            gracefulShutdown.Task
+            drained.Task
         );
 
-        if (completed == timeout)
-            Shutdown();
+        // Shutdown in both outcomes: a drained inbox must still stop the actor (reject further
+        // sends and run PostShutdown), and a timeout forces the stop.
+        Shutdown();
 
         return completed != timeout;
     }
@@ -175,7 +192,12 @@ public sealed class ActorRunner<TActor, TRequest> where TActor : IActor<TRequest
         {
             if (Actor is null || ActorContext is null || shutdown == 0)
             {
-                gracefulShutdown?.SetResult();
+                // Restore the idle latch: the sender flipped it to schedule this turn, and without
+                // this a turn that no-ops (actor not wired up yet) would leave the runner unable
+                // to ever schedule another turn — the mailbox would fill forever.
+                Interlocked.Exchange(ref processing, 1);
+
+                gracefulShutdown?.TrySetResult();
                 return;
             }
 
@@ -220,7 +242,10 @@ public sealed class ActorRunner<TActor, TRequest> where TActor : IActor<TRequest
                 break;
             }
 
-            gracefulShutdown?.SetResult();
+            // Only signal drain completion when the inbox is actually empty (or shutdown swept it);
+            // on a hand-off break another loop owns the remaining messages and will signal instead.
+            if (inbox.IsEmpty || shutdown == 0)
+                gracefulShutdown?.TrySetResult();
         }
         catch (Exception ex)
         {
@@ -228,115 +253,6 @@ public sealed class ActorRunner<TActor, TRequest> where TActor : IActor<TRequest
         }
     }
 
-    /// <summary>
-    /// Processes a single message from the actor's inbox, ensuring proper delivery to the actor,
-    /// and handles conditions such as shutdown or errors during message processing.
-    /// </summary>
-    /// <param name="message">The message to be delivered, encapsulating the request and sender information.</param>
-    private async Task DeliverSingleMessage(ActorMessage<TRequest> message)
-    {
-        try
-        {
-            if (Actor is null || ActorContext is null || shutdown == 0)
-            {
-                gracefulShutdown?.SetResult();
-                return;
-            }
-
-            ActorContext.Runner = this;
-
-            //await DeliverMessageInternal(Actor, message);
-            
-            if (ActorContext is not null)
-            {
-                // last sender is assigned
-                if (message.Sender is not null)
-                    ActorContext.Sender = message.Sender;
-                else
-                    ActorContext.Sender = (IGenericActorRef)actorSystem.Nobody;
-            }
-
-            try
-            {
-                await Actor.Receive(message.Request);
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
-                
-                await System.IO.File.WriteAllTextAsync("/tmp/error.log", ex.ToString());
-            }
-
-            do
-            {
-                while (inbox.TryDequeue(out message))
-                {
-                    if (shutdown == 0)
-                        break;
-
-                    //await DeliverMessageInternal(Actor, message);
-                    
-                    if (ActorContext is not null)
-                    {
-                        // last sender is assigned
-                        if (message.Sender is not null)
-                            ActorContext.Sender = message.Sender;
-                        else
-                            ActorContext.Sender = (IGenericActorRef)actorSystem.Nobody;
-                    }
-
-                    try
-                    {
-                        await Actor.Receive(message.Request);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
-                        
-                        await System.IO.File.WriteAllTextAsync("/tmp/error.log", ex.ToString());
-                    }
-                }
-            } 
-            while (shutdown == 1 && Interlocked.CompareExchange(ref processing, 1, 0) != 0);
-
-            gracefulShutdown?.SetResult();
-        }
-        catch (Exception ex)
-        {
-            logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
-            
-            await System.IO.File.WriteAllTextAsync("/tmp/error.log", ex.ToString());
-        }
-    }
-
-    /// <summary>
-    /// Delivers a message to the actor for processing.
-    /// Ensures proper context assignment and handles exceptions during actor message processing.
-    /// </summary>
-    /// <param name="actor">The actor that will process the message.</param>
-    /// <param name="message">The message to be processed by the actor.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
-    private async Task DeliverMessageInternal(IActor<TRequest> actor, ActorMessage<TRequest> message)
-    {
-        if (ActorContext is not null)
-        {
-            // last sender is assigned
-            if (message.Sender is not null)
-                ActorContext.Sender = message.Sender;
-            else
-                ActorContext.Sender = (IGenericActorRef)actorSystem.Nobody;
-        }
-
-        try
-        {
-            await actor.Receive(message.Request);
-        }
-        catch (Exception ex)
-        {
-            logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
-        }
-    }
-    
     /// <summary>
     /// Allows to peek at the next message in the inbox without removing it.
     /// </summary>

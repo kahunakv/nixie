@@ -487,8 +487,11 @@ public sealed class ActorSystem : IDisposable
     public ActorRepository<TActor, TRequest, TResponse> GetRepository<TActor, TRequest, TResponse>()
         where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
+        // Keyed by the closed repository type, not typeof(TActor): one actor class can be used
+        // through several repository shapes (or request types), and a TActor-only key would hand
+        // back a repository of the wrong closed type and fail the cast below.
         Lazy<IActorRepositoryRunnable> repository = repositories.GetOrAdd(
-            typeof(TActor),
+            typeof(ActorRepository<TActor, TRequest, TResponse>),
             (type) => new(CreateRepository<TActor, TRequest, TResponse>)
         );
 
@@ -512,7 +515,7 @@ public sealed class ActorSystem : IDisposable
         where TActor : IActor<TRequest> where TRequest : class
     {
         Lazy<IActorRepositoryRunnable> repository = repositories.GetOrAdd(
-            typeof(TActor),
+            typeof(ActorRepository<TActor, TRequest>),
             CreateRepositoryInternal<TActor, TRequest>
         );
 
@@ -542,7 +545,7 @@ public sealed class ActorSystem : IDisposable
         where TActor : IActorAggregate<TRequest> where TRequest : class
     {
         Lazy<IActorRepositoryRunnable> repository = repositories.GetOrAdd(
-            typeof(TActor),
+            typeof(ActorRepositoryAggregate<TActor, TRequest>),
             CreateRepositoryInternalAggregate<TActor, TRequest>
         );
 
@@ -572,7 +575,7 @@ public sealed class ActorSystem : IDisposable
         where TActor : IActorStruct<TRequest> where TRequest : struct
     {
         Lazy<IActorRepositoryRunnable> repository = repositories.GetOrAdd(
-            typeof(TActor),
+            typeof(ActorRepositoryStruct<TActor, TRequest>),
             CreateRepositoryStructInternal<TActor, TRequest>
         );
 
@@ -603,7 +606,7 @@ public sealed class ActorSystem : IDisposable
         where TActor : IActorStruct<TRequest, TResponse> where TRequest : struct where TResponse : struct
     {
         Lazy<IActorRepositoryRunnable> repository = repositories.GetOrAdd(
-            typeof(TActor),
+            typeof(ActorRepositoryStruct<TActor, TRequest, TResponse>),
             (type) => new(CreateRepositoryStruct<TActor, TRequest, TResponse>)
         );
 
@@ -627,7 +630,7 @@ public sealed class ActorSystem : IDisposable
         where TActor : IActorAggregate<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         Lazy<IActorRepositoryRunnable> repository = repositories.GetOrAdd(
-            typeof(TActor),
+            typeof(ActorRepositoryAggregate<TActor, TRequest, TResponse>),
             CreateRepositoryInternalAggregate<TActor, TRequest, TResponse>
         );
 
@@ -877,6 +880,31 @@ public sealed class ActorSystem : IDisposable
     }
 
     /// <summary>
+    /// Stops all timers running or scheduled for the specified actor.
+    /// </summary>
+    /// <typeparam name="TActor"></typeparam>
+    /// <typeparam name="TRequest"></typeparam>
+    /// <param name="actorRef"></param>
+    public void StopAllTimers<TActor, TRequest>(IActorRefAggregate<TActor, TRequest> actorRef)
+        where TActor : IActorAggregate<TRequest> where TRequest : class
+    {
+        scheduler.StopAllTimers(actorRef);
+    }
+
+    /// <summary>
+    /// Stops all timers running or scheduled for the specified actor.
+    /// </summary>
+    /// <typeparam name="TActor"></typeparam>
+    /// <typeparam name="TRequest"></typeparam>
+    /// <typeparam name="TResponse"></typeparam>
+    /// <param name="actorRef"></param>
+    public void StopAllTimers<TActor, TRequest, TResponse>(IActorRefAggregate<TActor, TRequest, TResponse> actorRef)
+        where TActor : IActorAggregate<TRequest, TResponse> where TRequest : class where TResponse : class?
+    {
+        scheduler.StopAllTimers(actorRef);
+    }
+
+    /// <summary>
     /// Waits for all the actors in the system to finish processing their messages.
     /// </summary>
     /// <returns></returns>
@@ -884,6 +912,7 @@ public sealed class ActorSystem : IDisposable
     {
         ValueStopwatch stopWatch = ValueStopwatch.StartNew();
         string? pendingActorName = null, processingName = null;
+        int rounds = 0;
 
         while (true)
         {
@@ -898,7 +927,6 @@ public sealed class ActorSystem : IDisposable
 
                 if (lazyRepository.Value.HasPendingMessages(out pendingActorName) || lazyRepository.Value.IsProcessing(out processingName))
                 {
-                    await Task.Yield();
                     completed = false;
                     break;
                 }
@@ -912,6 +940,13 @@ public sealed class ActorSystem : IDisposable
                 logger?.LogWarning("Timeout waiting for actor {PendingActorName}/{ProcessingName}", pendingActorName, processingName);
                 break;
             }
+
+            // Yield for the first rounds to stay responsive to fast drains, then back off to a
+            // timed delay so a long wait doesn't hot-spin a core re-scanning every repository.
+            if (++rounds < 128)
+                await Task.Yield();
+            else
+                await Task.Delay(1);
         }
     }
 
@@ -932,6 +967,17 @@ public sealed class ActorSystem : IDisposable
 
     public void Dispose()
     {
+        // Timers first so nothing fires into actors being torn down, then the actors themselves:
+        // otherwise runners keep accepting and processing messages after the system is disposed
+        // and PostShutdown hooks never run.
         scheduler.Dispose();
+
+        foreach (KeyValuePair<Type, Lazy<IActorRepositoryRunnable>> kv in repositories)
+        {
+            if (kv.Value.IsValueCreated)
+                kv.Value.Value.ShutdownAll();
+        }
+
+        repositories.Clear();
     }
 }

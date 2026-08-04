@@ -23,4 +23,9 @@ public interface IActorRepositoryRunnable
     /// <paramref name="maxWait"/> for in-flight processing to drain.
     /// </summary>
     public Task GracefulShutdownAll(TimeSpan maxWait);
+
+    /// <summary>
+    /// Immediately shuts down every actor in this repository without waiting for inboxes to drain.
+    /// </summary>
+    public void ShutdownAll();
 }

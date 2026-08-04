@@ -26,6 +26,9 @@ public class ConsistentHashActor<TActor, TRequest> : IActor<TRequest>
     /// <param name="numberInstances"></param>
     public ConsistentHashActor(IActorContext<ConsistentHashActor<TActor, TRequest>, TRequest> context, int numberInstances)
     {
+        if (numberInstances < 1)
+            throw new NixieException("A router must have at least one routee.");
+
         this.context = context;
 
         instances.Capacity = numberInstances;
@@ -41,8 +44,13 @@ public class ConsistentHashActor<TActor, TRequest> : IActor<TRequest>
     /// <param name="instances"></param>
     public ConsistentHashActor(IActorContext<ConsistentHashActor<TActor, TRequest>, TRequest> context, List<IActorRef<TActor, TRequest>> instances)
     {
+        if (instances is null || instances.Count == 0)
+            throw new NixieException("A router must have at least one routee.");
+
         this.context = context;
-        this.instances = instances;
+
+        // Copied so a caller mutating its own list afterwards cannot race the router thread.
+        this.instances = [.. instances];
     }
 
     /// <summary>
