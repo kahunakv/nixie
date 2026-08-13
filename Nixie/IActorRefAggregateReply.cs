@@ -1,4 +1,6 @@
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Nixie;
 
 /// <summary>
@@ -50,6 +52,25 @@ public interface IActorRefAggregate<TActor, TRequest, TResponse>
     /// <param name="sender"></param>
     /// <returns></returns>
     public bool TrySend(TRequest message, IGenericActorRef sender);
+
+    /// <summary>
+    /// Admission-checked ask: <c>true</c> with a reply task if the message was admitted, <c>false</c> —
+    /// allocating no promise and no exception — if it was rejected (inbox full or runner shut down) and
+    /// never enqueued, so it is safe to retry.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="reply"></param>
+    /// <returns></returns>
+    public bool TryAsk(TRequest message, [NotNullWhen(true)] out Task<TResponse?>? reply);
+
+    /// <summary>
+    /// Admission-checked ask with an explicit sender.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="sender"></param>
+    /// <param name="reply"></param>
+    /// <returns></returns>
+    public bool TryAsk(TRequest message, IGenericActorRef sender, [NotNullWhen(true)] out Task<TResponse?>? reply);
 
     /// <summary>
     /// Sends a message to the actor and expects a response

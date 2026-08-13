@@ -1,5 +1,6 @@
 ﻿
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using DotNext.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
@@ -11,7 +12,7 @@ namespace Nixie;
 /// <typeparam name="TActor"></typeparam>
 /// <typeparam name="TRequest"></typeparam>
 /// <typeparam name="TResponse"></typeparam>
-public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor : IActorStruct<TRequest, TResponse> where TRequest : struct where TResponse : struct
+public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> : IThreadPoolWorkItem where TActor : IActorStruct<TRequest, TResponse> where TRequest : struct where TResponse : struct
 {
     private readonly ActorSystem actorSystem;
 
@@ -84,6 +85,18 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
         this.isControlMessage = isControlMessage;
 
         Name = name;
+    }
+
+    /// <summary>
+    /// Thread-pool wakeup entry point: starts one drain turn. Scheduled with
+    /// ThreadPool.UnsafeQueueUserWorkItem so the wakeup captures no ExecutionContext — Task.Run would
+    /// inflate every wakeup task with the sender's captured context (a ContingentProperties allocation
+    /// per wakeup whenever an AsyncLocal is live) and leak the triggering sender's context into other
+    /// senders' message processing.
+    /// </summary>
+    void IThreadPoolWorkItem.Execute()
+    {
+        _ = DeliverMessages();
     }
 
     /// <summary>
@@ -166,10 +179,10 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
             inbox.Enqueue(messageReply);
         }
 
-        // Task.Run keeps the drain loop off the sender's thread (a direct call would run Receive
-        // synchronously up to its first await on the caller).
+        // Queued to the pool to keep the drain loop off the sender's thread (a direct call would run
+        // Receive synchronously up to its first await on the caller); see IThreadPoolWorkItem.Execute.
         if (1 == Interlocked.Exchange(ref processing, 0))
-            Task.Run(DeliverMessages);
+            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
 
         // If Shutdown() raced with the admission check above, the message may have been enqueued
         // after the shutdown sweep; sweep again so no admitted promise is left uncompleted.
@@ -222,16 +235,80 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> where TActor 
             inbox.Enqueue(messageReply);
         }
 
-        // Task.Run keeps the drain loop off the sender's thread (a direct call would run Receive
-        // synchronously up to its first await on the caller).
+        // Queued to the pool to keep the drain loop off the sender's thread (a direct call would run
+        // Receive synchronously up to its first await on the caller); see IThreadPoolWorkItem.Execute.
         if (1 == Interlocked.Exchange(ref processing, 0))
-            Task.Run(DeliverMessages);
+            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
 
         // If Shutdown() raced with the admission check above, the message may have been enqueued
         // after the shutdown sweep; sweep again so no queued message outlives the shutdown.
         if (shutdown == 0)
             DrainAndCancelPending();
 
+        return true;
+    }
+
+    /// <summary>
+    /// Admission-checked ask: enqueues the message with a reply promise only when it is admitted, and
+    /// returns whether it was. Returns <c>false</c> — allocating nothing, neither promise nor exception —
+    /// when the runner is shut down or the ordinary inbox is at <c>MaxInboxSize</c>; the message was never
+    /// enqueued, so it is safe to retry. Control messages are exempt from the bound and are always admitted
+    /// on a live runner. On <c>true</c>, <paramref name="reply"/> completes when the actor processes the
+    /// message (or as canceled if the actor shuts down before then).
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="sender"></param>
+    /// <param name="reply"></param>
+    /// <returns></returns>
+    public bool TryAsk(TRequest message, IGenericActorRef? sender, [NotNullWhen(true)] out Task<TResponse>? reply)
+    {
+        if (shutdown == 0)
+        {
+            reply = null;
+            return false;
+        }
+
+        // Control messages are exempt from maxInboxSize and delivered ahead of ordinary messages. The
+        // classification uses the typed predicate, so no boxing occurs for struct requests.
+        bool isControl = isControlMessage is not null && isControlMessage(message);
+
+        if (isControl)
+        {
+            Interlocked.Increment(ref pendingControlMessageCount);
+        }
+        else if (maxInboxSize.HasValue)
+        {
+            int newCount = Interlocked.Increment(ref pendingMessageCount);
+            if (newCount > maxInboxSize.Value)
+            {
+                Interlocked.Decrement(ref pendingMessageCount);
+                reply = null;
+                return false;
+            }
+        }
+        else
+        {
+            Interlocked.Increment(ref pendingMessageCount);
+        }
+
+        // The promise is allocated only after admission succeeded, so a rejection costs nothing.
+        TaskCompletionSource<TResponse> promise = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        if (isControl)
+            controlInbox.Enqueue(new(message, sender, promise));
+        else
+            inbox.Enqueue(new(message, sender, promise));
+
+        if (1 == Interlocked.Exchange(ref processing, 0))
+            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+
+        // If Shutdown() raced with the admission check above, the message may have been enqueued
+        // after the shutdown sweep; sweep again so no admitted promise is left uncompleted
+        // (the returned task then completes as canceled).
+        if (shutdown == 0)
+            DrainAndCancelPending();
+
+        reply = promise.Task;
         return true;
     }
 

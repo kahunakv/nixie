@@ -9,7 +9,7 @@ namespace Nixie;
 /// </summary>
 /// <typeparam name="TActor"></typeparam>
 /// <typeparam name="TRequest"></typeparam>
-public sealed class ActorRunnerStruct<TActor, TRequest> where TActor : IActorStruct<TRequest> where TRequest : struct
+public sealed class ActorRunnerStruct<TActor, TRequest> : IThreadPoolWorkItem where TActor : IActorStruct<TRequest> where TRequest : struct
 {
     private readonly ActorSystem actorSystem;
 
@@ -78,6 +78,18 @@ public sealed class ActorRunnerStruct<TActor, TRequest> where TActor : IActorStr
     }
 
     /// <summary>
+    /// Thread-pool wakeup entry point: starts one drain turn. Scheduled with
+    /// ThreadPool.UnsafeQueueUserWorkItem so the wakeup captures no ExecutionContext — Task.Run would
+    /// inflate every wakeup task with the sender's captured context (a ContingentProperties allocation
+    /// per wakeup whenever an AsyncLocal is live) and leak the triggering sender's context into other
+    /// senders' message processing.
+    /// </summary>
+    void IThreadPoolWorkItem.Execute()
+    {
+        _ = DeliverMessages();
+    }
+
+    /// <summary>
     /// Enqueues a message to the actor and tries to deliver it.
     /// </summary>
     /// <param name="message"></param>
@@ -103,11 +115,12 @@ public sealed class ActorRunnerStruct<TActor, TRequest> where TActor : IActorStr
 
         inbox.Enqueue(new(message, sender));
 
-        // Task.Run (rather than invoking the async method directly) keeps the drain loop off the
-        // sender's thread: a direct call would run Receive synchronously up to its first await,
-        // blocking the "fire-and-forget" sender and inheriting its locks and execution context.
+        // Queued to the pool (rather than invoking the async method directly) to keep the drain loop
+        // off the sender's thread: a direct call would run Receive synchronously up to its first await,
+        // blocking the "fire-and-forget" sender. See IThreadPoolWorkItem.Execute for why the wakeup
+        // avoids Task.Run.
         if (1 == Interlocked.Exchange(ref processing, 0))
-            Task.Run(DeliverMessages);
+            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
 
         // If Shutdown() raced with the admission check above, the message may have been enqueued
         // after the shutdown sweep; sweep again so the pending count stays accurate.

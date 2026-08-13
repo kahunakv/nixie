@@ -9,7 +9,7 @@ namespace Nixie;
 /// </summary>
 /// <typeparam name="TActor"></typeparam>
 /// <typeparam name="TRequest"></typeparam>
-public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActorAggregate<TRequest> where TRequest : class
+public sealed class ActorRunnerAggregate<TActor, TRequest> : IThreadPoolWorkItem where TActor : IActorAggregate<TRequest> where TRequest : class
 {
     private readonly ActorSystem actorSystem;
 
@@ -82,6 +82,18 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
     }
 
     /// <summary>
+    /// Thread-pool wakeup entry point: starts one drain turn. Scheduled with
+    /// ThreadPool.UnsafeQueueUserWorkItem so the wakeup captures no ExecutionContext — Task.Run would
+    /// inflate every wakeup task with the sender's captured context (a ContingentProperties allocation
+    /// per wakeup whenever an AsyncLocal is live) and leak the triggering sender's context into other
+    /// senders' message processing.
+    /// </summary>
+    void IThreadPoolWorkItem.Execute()
+    {
+        _ = DeliverMessages();
+    }
+
+    /// <summary>
     /// Enqueues a message to the actor and tries to deliver it.
     /// </summary>
     /// <param name="message"></param>
@@ -107,10 +119,10 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> where TActor : IActor
 
         inbox.Enqueue(new ActorMessage<TRequest>(message, sender));
 
-        // Task.Run keeps the drain loop off the sender's thread (a direct call would run Receive
-        // synchronously up to its first await on the caller).
+        // Queued to the pool to keep the drain loop off the sender's thread (a direct call would run
+        // Receive synchronously up to its first await on the caller); see IThreadPoolWorkItem.Execute.
         if (1 == Interlocked.Exchange(ref processing, 0))
-            Task.Run(DeliverMessages);
+            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
 
         // If Shutdown() raced with the admission check above, the message may have been enqueued
         // after the shutdown sweep; sweep again so the pending count stays accurate.

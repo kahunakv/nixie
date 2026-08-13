@@ -1,4 +1,6 @@
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Nixie;
 
 /// <summary>
@@ -80,6 +82,33 @@ public sealed class ActorRefAggregate<TActor, TRequest, TResponse> : IGenericAct
     public bool TrySend(TRequest message, IGenericActorRef sender)
     {
         return Runner.TrySend(message, sender);
+    }
+
+    /// <summary>
+    /// Admission-checked ask: returns <c>true</c> with a <paramref name="reply"/> task that completes when
+    /// the actor processes the batch containing the message, or <c>false</c> when the message was rejected
+    /// (bounded inbox at capacity, or the runner shut down) and never enqueued, so it is safe to retry.
+    /// Unlike <see cref="Ask(TRequest)"/>, a rejection allocates nothing — no promise and no
+    /// <see cref="ActorBusyException"/> — making this the cheap path for busy/retry loops.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="reply"></param>
+    /// <returns></returns>
+    public bool TryAsk(TRequest message, [NotNullWhen(true)] out Task<TResponse?>? reply)
+    {
+        return Runner.TryAsk(message, null, out reply);
+    }
+
+    /// <summary>
+    /// Admission-checked ask with an explicit sender. See <see cref="TryAsk(TRequest, out Task{TResponse})"/>.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="sender"></param>
+    /// <param name="reply"></param>
+    /// <returns></returns>
+    public bool TryAsk(TRequest message, IGenericActorRef sender, [NotNullWhen(true)] out Task<TResponse?>? reply)
+    {
+        return Runner.TryAsk(message, sender, out reply);
     }
 
     /// <summary>
