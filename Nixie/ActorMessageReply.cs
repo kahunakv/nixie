@@ -20,9 +20,17 @@ public readonly struct ActorMessageReply<TRequest, TResponse>
 
     /// <summary>
     /// Returns the task completion source of the reply, or <c>null</c> for a promise-free fire-and-forget
-    /// message admitted through <c>TrySend</c> (no reply is ever produced for such a message).
+    /// message admitted through <c>TrySend</c> (no reply is ever produced for such a message) and for a
+    /// pooled-ask message, whose reply travels on <see cref="PooledHandle"/> instead.
     /// </summary>
     public TaskCompletionSource<TResponse?>? Promise { get; }
+
+    /// <summary>
+    /// The pooled reply handle for a message admitted through the pooled ask path, or the default
+    /// (absent) handle for every other message. A handler that defers its reply captures this handle
+    /// and completes it later; its TrySet methods are first-wins and stale-safe.
+    /// </summary>
+    public ReplyHandle<TResponse> PooledHandle { get; }
 
     /// <summary>
     /// Constructor
@@ -35,6 +43,21 @@ public readonly struct ActorMessageReply<TRequest, TResponse>
         Request = request;
         Sender = sender;
         Promise = promise;
+    }
+
+    /// <summary>
+    /// Pooled-ask constructor: the reply travels on <paramref name="pooledHandle"/> and no task
+    /// completion source exists for this message.
+    /// </summary>
+    /// <param name="request"></param>
+    /// <param name="sender"></param>
+    /// <param name="pooledHandle"></param>
+    public ActorMessageReply(TRequest request, IGenericActorRef? sender, ReplyHandle<TResponse> pooledHandle)
+    {
+        Request = request;
+        Sender = sender;
+        Promise = null;
+        PooledHandle = pooledHandle;
     }
 
     /// <summary>

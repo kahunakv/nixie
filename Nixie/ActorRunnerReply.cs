@@ -307,6 +307,71 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
     }
 
     /// <summary>
+    /// Admission-checked ask on the pooled reply path: same admission contract as
+    /// <see cref="TryAsk"/>, but the reply is a <see cref="ValueTask{TResponse}"/> backed by a pooled
+    /// <see cref="ReplyPromise{TResponse}"/> instead of a freshly allocated task. The returned
+    /// ValueTask must be awaited exactly once; consuming it recycles the promise for a later ask.
+    /// A rejection allocates nothing and enqueues nothing, so it is safe to retry.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="sender"></param>
+    /// <param name="reply"></param>
+    /// <returns></returns>
+    public bool TryAskPooled(TRequest message, IGenericActorRef? sender, out ValueTask<TResponse?> reply)
+    {
+        if (shutdown == 0)
+        {
+            reply = default;
+            return false;
+        }
+
+        // Control messages are exempt from maxInboxSize and delivered ahead of ordinary messages.
+        bool isControl = isControlMessage is not null && isControlMessage(message);
+
+        if (isControl)
+        {
+            Interlocked.Increment(ref pendingControlMessageCount);
+        }
+        else if (maxInboxSize.HasValue)
+        {
+            int newCount = Interlocked.Increment(ref pendingMessageCount);
+            if (newCount > maxInboxSize.Value)
+            {
+                Interlocked.Decrement(ref pendingMessageCount);
+                reply = default;
+                return false;
+            }
+        }
+        else
+        {
+            Interlocked.Increment(ref pendingMessageCount);
+        }
+
+        // The promise is rented only after admission succeeded, so a rejection costs nothing. The
+        // handle and the awaitable are both captured before the message (and with it the promise)
+        // is published to the delivery loop.
+        ReplyPromise<TResponse> promise = ReplyPromise<TResponse>.Rent();
+        ReplyHandle<TResponse> handle = promise.Handle;
+        reply = promise.AsValueTask();
+
+        if (isControl)
+            controlInbox.Enqueue(new(message, sender, handle));
+        else
+            inbox.Enqueue(new(message, sender, handle));
+
+        if (1 == Interlocked.Exchange(ref processing, 0))
+            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+
+        // If Shutdown() raced with the admission check above, the message may have been enqueued
+        // after the shutdown sweep; sweep again so no admitted promise is left uncompleted
+        // (the returned ValueTask then completes as canceled).
+        if (shutdown == 0)
+            DrainAndCancelPending();
+
+        return true;
+    }
+
+    /// <summary>
     /// Try to shutdown the actor and returns a bool indicating success
     /// </summary>
     /// <returns></returns>
@@ -338,6 +403,7 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
                 Interlocked.Decrement(ref pendingMessageCount);
 
             message.Promise?.TrySetCanceled(CancellationToken.None);
+            message.PooledHandle.TrySetCanceled();
         }
     }
 
@@ -438,6 +504,7 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
                         // The message was dequeued but will never be delivered; cancel its promise
                         // so the caller doesn't await forever.
                         message.Promise?.TrySetCanceled(CancellationToken.None);
+                        message.PooledHandle.TrySetCanceled();
                         break;
                     }
 
@@ -460,11 +527,15 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
                         TResponse? response = await Actor.Receive(message.Request);
 
                         if (!ActorContext.ByPassReply)
+                        {
                             message.Promise?.TrySetResult(response);
+                            message.PooledHandle.TrySetResult(response);
+                        }
                     }
                     catch (Exception ex)
                     {
                         message.Promise?.TrySetException(ex);
+                        message.PooledHandle.TrySetException(ex);
 
                         logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
                     }

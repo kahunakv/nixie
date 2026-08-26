@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>Nixie</PackageId>
-    <Version>1.2.5</Version>
+    <Version>1.3.0</Version>
     <Description>A Lightweight Actor Model Implementation for C#/.NET</Description>
     <Authors>Andres Gutierrez</Authors>
     <Company>Andres Gutierrez</Company>    

@@ -72,6 +72,27 @@ public interface IActorRef<TActor, TRequest, TResponse> where TActor : IActor<TR
     public bool TryAsk(TRequest message, IGenericActorRef sender, [NotNullWhen(true)] out Task<TResponse?>? reply);
 
     /// <summary>
+    /// Admission-checked ask on the pooled reply path: same admission contract as
+    /// <see cref="TryAsk(TRequest, out Task{TResponse})"/>, but the reply is a pooled
+    /// <see cref="ValueTask{TResponse}"/> that must be awaited exactly once. The default
+    /// implementation falls back to the task-based ask, so existing implementors keep working.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="reply"></param>
+    /// <returns></returns>
+    public bool TryAskPooled(TRequest message, out ValueTask<TResponse?> reply)
+    {
+        if (TryAsk(message, out Task<TResponse?>? task))
+        {
+            reply = new(task);
+            return true;
+        }
+
+        reply = default;
+        return false;
+    }
+
+    /// <summary>
     /// Sends a message to the actor and expects a response
     /// </summary>
     /// <param name="message"></param>

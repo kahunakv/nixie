@@ -114,10 +114,35 @@ public sealed class ActorRef<TActor, TRequest, TResponse> : IGenericActorRef, IA
     }
 
     /// <summary>
+    /// Admission-checked ask on the pooled reply path: like <see cref="TryAsk(TRequest, out Task{TResponse})"/>,
+    /// but the reply is a pooled <see cref="ValueTask{TResponse}"/> that must be awaited exactly once.
+    /// Consuming the reply recycles its promise, so per-ask steady-state allocation drops to zero.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="reply"></param>
+    /// <returns></returns>
+    public bool TryAskPooled(TRequest message, out ValueTask<TResponse?> reply)
+    {
+        return runner.TryAskPooled(message, null, out reply);
+    }
+
+    /// <summary>
+    /// Admission-checked pooled ask with an explicit sender. See <see cref="TryAskPooled(TRequest, out ValueTask{TResponse})"/>.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="sender"></param>
+    /// <param name="reply"></param>
+    /// <returns></returns>
+    public bool TryAskPooled(TRequest message, IGenericActorRef sender, out ValueTask<TResponse?> reply)
+    {
+        return runner.TryAskPooled(message, sender, out reply);
+    }
+
+    /// <summary>
     /// Sends a message to actor expecting a response and without specifying a sender
     /// </summary>
     /// <param name="message"></param>
-    /// <returns></returns>    
+    /// <returns></returns>
     public Task<TResponse?> Ask(TRequest message)
     {
         // Non-async: return the promise's own task directly, avoiding the extra async state-machine box and
