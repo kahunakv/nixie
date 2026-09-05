@@ -58,6 +58,13 @@ public static class Program
 
     public static async Task Main(string[] args)
     {
+        // Throughput benchmark (dotnet run -c Release -- throughput [floodN] [askN] [routees]).
+        if (args.Length > 0 && string.Equals(args[0], "throughput", StringComparison.OrdinalIgnoreCase))
+        {
+            await Throughput.Run(args);
+            return;
+        }
+
         // Iteration counts (override: dotnet run -c Release -- <askN> <trySendN> <rawTcsN>).
         int askN = args.Length > 0 ? int.Parse(args[0], CultureInfo.InvariantCulture) : 100_000;
         int trySendN = args.Length > 1 ? int.Parse(args[1], CultureInfo.InvariantCulture) : 200_000;

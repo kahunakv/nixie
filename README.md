@@ -12,6 +12,19 @@ Nixie is a small actor framework built on the .NET Task Parallel Library. It foc
 
 Actors process messages asynchronously and encapsulate their own state. Callers communicate with actors through typed actor references, using either fire-and-forget `Send` or request/response `Ask`.
 
+## Performance At A Glance
+
+On an 8-core Apple Arm64 machine with .NET 8, one Nixie actor processes:
+
+- **14M messages per second** with a class message and `Send`.
+- **20M messages per second** with a struct message and `Send`.
+- **3M to 5M messages per second** through a router with 4 routees.
+- **2.4M round trips per second** with `Ask` and 64 requests in flight.
+- **~1.9 µs per round trip** with `Ask` one request at a time.
+
+Your own numbers depend on your hardware and on the work your handler does.
+See [BENCHMARKS.md](BENCHMARKS.md) for the full results and for the method.
+
 ## Features
 
 - **Strongly typed actors:** request and response types are expressed in actor interfaces and actor references.
@@ -365,6 +378,8 @@ IActorRef<ConsistentHashActor<WorkerActor, WorkItem>, WorkItem> router =
 
 Struct router variants are available through `CreateRoundRobinRouterStruct` and `CreateConsistentHashRouterStruct`.
 
+A router adds one actor hop, because the router is itself an actor. See [BENCHMARKS.md](BENCHMARKS.md) for the measured cost.
+
 ## Timers And Scheduling
 
 Schedule a message once:
@@ -486,6 +501,23 @@ The solution contains:
 
 - `Nixie`: the actor framework.
 - `Nixie.Tests`: xUnit tests covering actors, replies, routers, scheduling, DI, shutdown, logging, hashing, and `LazyTask`.
+- `Nixie.Benchmarks`: throughput and allocation benchmarks.
+
+## Benchmarks
+
+[BENCHMARKS.md](BENCHMARKS.md) reports the message throughput of each actor type and each router.
+
+Run the throughput benchmark:
+
+```shell
+dotnet run --project Nixie.Benchmarks -c Release -- throughput
+```
+
+Run the allocation benchmark:
+
+```shell
+dotnet run --project Nixie.Benchmarks -c Release
+```
 
 ## Contributing
 
