@@ -24,7 +24,11 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> : IThreadPool
 
     private readonly ConcurrentQueue<ActorMessageReply<TRequest, TResponse>> inbox = new();
 
-    private readonly ConcurrentQueue<ActorMessageReply<TRequest, TResponse>> controlInbox = new();
+    // Allocated only when a classifier exists: an empty ConcurrentQueue eagerly builds its lock and
+    // first segment (about 2 KB for this envelope type), and an actor without a classifier can never
+    // put a message in it. Non-null exactly when isControlMessage is non-null; every access relies
+    // on that invariant.
+    private readonly ConcurrentQueue<ActorMessageReply<TRequest, TResponse>>? controlInbox;
 
     private int pendingMessageCount;
 
@@ -44,7 +48,7 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> : IThreadPool
     /// <summary>
     /// Returns true if the actor's inbox is empty
     /// </summary>
-    public bool IsEmpty => inbox.IsEmpty && controlInbox.IsEmpty;
+    public bool IsEmpty => inbox.IsEmpty && (controlInbox is null || controlInbox.IsEmpty);
 
     /// <summary>
     /// Returns the number of messages in the inbox (ordinary + control)
@@ -83,6 +87,9 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> : IThreadPool
         this.logger = logger;
         this.maxInboxSize = maxInboxSize;
         this.isControlMessage = isControlMessage;
+
+        // See the field declaration: no classifier means no control message can ever be enqueued.
+        controlInbox = isControlMessage is not null ? new() : null;
 
         Name = name;
     }
@@ -157,7 +164,7 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> : IThreadPool
         if (isControlMessage is not null && isControlMessage(message))
         {
             Interlocked.Increment(ref pendingControlMessageCount);
-            controlInbox.Enqueue(messageReply);
+            controlInbox!.Enqueue(messageReply);
         }
         else
         {
@@ -193,6 +200,31 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> : IThreadPool
     }
 
     /// <summary>
+    /// Forwards a message to this runner on behalf of a parent envelope, without allocating anything for
+    /// the forward itself. A router uses this to hand its own message to a routee: the routee replies to
+    /// the original caller, so the forward needs no promise of its own.
+    ///
+    /// A parent envelope with a promise carries that promise through, so the routee completes the caller's
+    /// task. A parent envelope with no promise is fire-and-forget and is simply admitted; a parent envelope
+    /// of <c>null</c> is treated the same way. The pooled reply path exists only for reference-typed
+    /// replies, so no pooled handle can reach this runner.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="sender"></param>
+    /// <param name="parentReply"></param>
+    public void Forward(TRequest message, IGenericActorRef? sender, ActorMessageReply<TRequest, TResponse>? parentReply)
+    {
+        if (!parentReply.HasValue || parentReply.Value.Promise is null)
+        {
+            TrySend(message, sender);
+            return;
+        }
+
+        // The parent promise is reused, not duplicated, so this path allocates no promise either.
+        SendAndTryDeliver(message, sender, parentReply);
+    }
+
+    /// <summary>
     /// Fire-and-forget admission: enqueues a message without allocating a reply promise and returns whether
     /// it was admitted. Returns <c>false</c> (and enqueues nothing) when the runner is shut down or when the
     /// ordinary inbox is at <c>MaxInboxSize</c>; a <c>false</c> means the message was never delivered, so it
@@ -214,7 +246,7 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> : IThreadPool
         if (isControlMessage is not null && isControlMessage(message))
         {
             Interlocked.Increment(ref pendingControlMessageCount);
-            controlInbox.Enqueue(messageReply);
+            controlInbox!.Enqueue(messageReply);
         }
         else
         {
@@ -295,7 +327,7 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> : IThreadPool
         TaskCompletionSource<TResponse> promise = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         if (isControl)
-            controlInbox.Enqueue(new(message, sender, promise));
+            controlInbox!.Enqueue(new(message, sender, promise));
         else
             inbox.Enqueue(new(message, sender, promise));
 
@@ -370,18 +402,26 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> : IThreadPool
             return true;
         }
 
-        Task timeout = Task.Delay(maxWait);
+        // WaitAsync releases its timer as soon as the drain signal arrives. A Task.WhenAny over a
+        // Task.Delay leaves that timer registered until the full deadline expires, so every actor
+        // that drains early keeps a live timer for the rest of its timeout.
+        bool drainedInTime;
 
-        Task completed = await Task.WhenAny(
-            timeout,
-            drained.Task
-        );
+        try
+        {
+            await drained.Task.WaitAsync(maxWait);
+            drainedInTime = true;
+        }
+        catch (TimeoutException)
+        {
+            drainedInTime = false;
+        }
 
         // Shutdown in both outcomes: a drained inbox must still stop the actor (reject further
         // sends and run PostShutdown), and a timeout forces the stop.
         Shutdown();
 
-        return completed != timeout;
+        return drainedInTime;
     }
 
     /// <summary>
@@ -390,7 +430,7 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> : IThreadPool
     /// </summary>
     private bool TryDequeueNext(out ActorMessageReply<TRequest, TResponse> message, out bool isControl)
     {
-        if (controlInbox.TryDequeue(out message))
+        if (controlInbox is not null && controlInbox.TryDequeue(out message))
         {
             isControl = true;
             return true;
@@ -472,7 +512,13 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> : IThreadPool
                     {
                         message.Promise?.TrySetException(ex);
 
-                        logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
+                        // The arguments (ex.StackTrace formats a whole stack) are built only when the level
+
+                        // is actually enabled; a non-null logger with error logging off paid for them before.
+
+                        if (logger is not null && logger.IsEnabled(LogLevel.Error))
+
+                            logger.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
                     }
                 }
 
@@ -494,7 +540,10 @@ public sealed class ActorRunnerStruct<TActor, TRequest, TResponse> : IThreadPool
         }
         catch (Exception ex)
         {
-            logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
+            // The arguments (ex.StackTrace formats a whole stack) are built only when the level
+            // is actually enabled; a non-null logger with error logging off paid for them before.
+            if (logger is not null && logger.IsEnabled(LogLevel.Error))
+                logger.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
         }
     }
 }

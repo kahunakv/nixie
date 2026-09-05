@@ -179,18 +179,26 @@ public sealed class ActorRunnerStruct<TActor, TRequest> : IThreadPoolWorkItem wh
             return true;
         }
 
-        Task timeout = Task.Delay(maxWait);
+        // WaitAsync releases its timer as soon as the drain signal arrives. A Task.WhenAny over a
+        // Task.Delay leaves that timer registered until the full deadline expires, so every actor
+        // that drains early keeps a live timer for the rest of its timeout.
+        bool drainedInTime;
 
-        Task completed = await Task.WhenAny(
-            timeout,
-            drained.Task
-        );
+        try
+        {
+            await drained.Task.WaitAsync(maxWait);
+            drainedInTime = true;
+        }
+        catch (TimeoutException)
+        {
+            drainedInTime = false;
+        }
 
         // Shutdown in both outcomes: a drained inbox must still stop the actor (reject further
         // sends and run PostShutdown), and a timeout forces the stop.
         Shutdown();
 
-        return completed != timeout;
+        return drainedInTime;
     }
 
     /// <summary>
@@ -238,7 +246,10 @@ public sealed class ActorRunnerStruct<TActor, TRequest> : IThreadPoolWorkItem wh
                     }
                     catch (Exception ex)
                     {
-                        logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
+                        // The arguments (ex.StackTrace formats a whole stack) are built only when the level
+                        // is actually enabled; a non-null logger with error logging off paid for them before.
+                        if (logger is not null && logger.IsEnabled(LogLevel.Error))
+                            logger.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
                     }
                 }
 
@@ -260,7 +271,10 @@ public sealed class ActorRunnerStruct<TActor, TRequest> : IThreadPoolWorkItem wh
         }
         catch (Exception ex)
         {
-            logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
+            // The arguments (ex.StackTrace formats a whole stack) are built only when the level
+            // is actually enabled; a non-null logger with error logging off paid for them before.
+            if (logger is not null && logger.IsEnabled(LogLevel.Error))
+                logger.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
         }
     }
 

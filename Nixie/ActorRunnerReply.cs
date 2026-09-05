@@ -24,7 +24,11 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
 
     private readonly ConcurrentQueue<ActorMessageReply<TRequest, TResponse>> inbox = new();
 
-    private readonly ConcurrentQueue<ActorMessageReply<TRequest, TResponse>> controlInbox = new();
+    // Allocated only when a classifier exists: an empty ConcurrentQueue eagerly builds its lock and
+    // first segment (about 2 KB for this envelope type), and an actor without a classifier can never
+    // put a message in it. Non-null exactly when isControlMessage is non-null; every access relies
+    // on that invariant.
+    private readonly ConcurrentQueue<ActorMessageReply<TRequest, TResponse>>? controlInbox;
 
     private int pendingMessageCount;
 
@@ -44,7 +48,7 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
     /// <summary>
     /// Returns true if the actor's inbox is empty
     /// </summary>
-    public bool IsEmpty => inbox.IsEmpty && controlInbox.IsEmpty;
+    public bool IsEmpty => inbox.IsEmpty && (controlInbox is null || controlInbox.IsEmpty);
 
     /// <summary>
     /// Returns the number of messages in the inbox (ordinary + control)
@@ -84,6 +88,9 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
         this.maxInboxSize = maxInboxSize;
         this.isControlMessage = isControlMessage;
 
+        // See the field declaration: no classifier means no control message can ever be enqueued.
+        controlInbox = isControlMessage is not null ? new() : null;
+
         Name = name;
     }
 
@@ -109,14 +116,15 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
     /// <returns></returns>
     public TaskCompletionSource<TResponse?> SendAndTryDeliver(TRequest message, IGenericActorRef? sender, ActorMessageReply<TRequest, TResponse>? parentReply)
     {
-        // A forwarded fire-and-forget message (admitted via TrySend) carries no promise; keep it
-        // promise-free through the forward and report the admission outcome on a detached promise,
-        // instead of dereferencing the missing parent promise below.
+        // A forwarded message with no promise (fire-and-forget, or a pooled ask whose reply travels on
+        // its handle) keeps its own reply channel through the forward. This overload must still return a
+        // task completion source, so the admission outcome goes on a detached promise. Callers that do
+        // not need that outcome must use Forward, which allocates nothing here.
         if (parentReply.HasValue && parentReply.Value.Promise is null)
         {
             TaskCompletionSource<TResponse?> statusPromise = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            if (TrySend(message, sender))
+            if (ForwardWithoutPromise(message, sender, parentReply.Value))
                 statusPromise.TrySetResult(default);
             else
                 statusPromise.TrySetCanceled(CancellationToken.None);
@@ -157,7 +165,7 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
         if (isControlMessage is not null && isControlMessage(message))
         {
             Interlocked.Increment(ref pendingControlMessageCount);
-            controlInbox.Enqueue(messageReply);
+            controlInbox!.Enqueue(messageReply);
         }
         else
         {
@@ -191,6 +199,107 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
     }
 
     /// <summary>
+    /// Forwards a message to this runner on behalf of a parent envelope, without allocating anything for
+    /// the forward itself. A router uses this to hand its own message to a routee: the routee replies to
+    /// the original caller, so the forward needs no promise of its own.
+    ///
+    /// Each of the three envelope kinds keeps its own reply channel. An ordinary ask carries its parent
+    /// promise through, so the routee completes the caller's task. A pooled ask carries its parent handle
+    /// through, so the routee completes the caller's pooled reply. A promise-free message carries neither
+    /// and is simply admitted. A parent envelope of <c>null</c> is forwarded as a promise-free message.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="sender"></param>
+    /// <param name="parentReply"></param>
+    public void Forward(TRequest message, IGenericActorRef? sender, ActorMessageReply<TRequest, TResponse>? parentReply)
+    {
+        if (!parentReply.HasValue)
+        {
+            TrySend(message, sender);
+            return;
+        }
+
+        // The parent promise is reused, not duplicated, so this path allocates no promise either.
+        if (parentReply.Value.Promise is not null)
+        {
+            SendAndTryDeliver(message, sender, parentReply);
+            return;
+        }
+
+        ForwardWithoutPromise(message, sender, parentReply.Value);
+    }
+
+    /// <summary>
+    /// Forwards an envelope whose Promise is null. That covers two different kinds: a pooled ask, whose
+    /// reply travels on its handle, and a genuinely promise-free message. Treating both as promise-free
+    /// dropped the pooled handle and left the original caller awaiting a reply forever.
+    /// </summary>
+    private bool ForwardWithoutPromise(TRequest message, IGenericActorRef? sender, ActorMessageReply<TRequest, TResponse> parentReply)
+    {
+        if (parentReply.PooledHandle.IsDefault)
+            return TrySend(message, sender);
+
+        // The parent's sender is kept when the forward does not name one, which is what the promise
+        // path does: it reuses the whole parent envelope, sender included.
+        return TrySendPooled(message, sender ?? parentReply.Sender, parentReply.PooledHandle);
+    }
+
+    /// <summary>
+    /// Admits a message that carries an existing pooled reply handle instead of a promise. The admission
+    /// rules match <see cref="TrySend"/>. A rejection completes the handle, because the original caller
+    /// awaits that handle and no later delivery can complete it: a shut-down runner cancels it, and a full
+    /// inbox faults it with <see cref="ActorBusyException"/>, which mirrors the promise-carrying path.
+    /// </summary>
+    private bool TrySendPooled(TRequest message, IGenericActorRef? sender, ReplyHandle<TResponse> pooledHandle)
+    {
+        if (shutdown == 0)
+        {
+            pooledHandle.TrySetCanceled();
+            return false;
+        }
+
+        ActorMessageReply<TRequest, TResponse> messageReply = new(message, sender, pooledHandle);
+
+        ConcurrentQueue<ActorMessageReply<TRequest, TResponse>>? control = controlInbox;
+
+        // Control messages are exempt from maxInboxSize and delivered ahead of ordinary messages.
+        if (control is not null && isControlMessage!(message))
+        {
+            Interlocked.Increment(ref pendingControlMessageCount);
+            control.Enqueue(messageReply);
+        }
+        else
+        {
+            if (maxInboxSize.HasValue)
+            {
+                int newCount = Interlocked.Increment(ref pendingMessageCount);
+                if (newCount > maxInboxSize.Value)
+                {
+                    Interlocked.Decrement(ref pendingMessageCount);
+                    pooledHandle.TrySetException(new ActorBusyException(Name, newCount - 1, maxInboxSize.Value));
+                    return false;
+                }
+            }
+            else
+            {
+                Interlocked.Increment(ref pendingMessageCount);
+            }
+
+            inbox.Enqueue(messageReply);
+        }
+
+        if (1 == Interlocked.Exchange(ref processing, 0))
+            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+
+        // If Shutdown() raced with the admission check above, the message may have been enqueued
+        // after the shutdown sweep; sweep again so no admitted handle is left uncompleted.
+        if (shutdown == 0)
+            DrainAndCancelPending();
+
+        return true;
+    }
+
+    /// <summary>
     /// Fire-and-forget admission: enqueues a message without allocating a reply promise and returns whether
     /// it was admitted. Returns <c>false</c> (and enqueues nothing) when the runner is shut down or when the
     /// ordinary inbox is at <c>MaxInboxSize</c>; a <c>false</c> means the message was never delivered, so it
@@ -211,7 +320,7 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
         if (isControlMessage is not null && isControlMessage(message))
         {
             Interlocked.Increment(ref pendingControlMessageCount);
-            controlInbox.Enqueue(messageReply);
+            controlInbox!.Enqueue(messageReply);
         }
         else
         {
@@ -289,7 +398,7 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
         TaskCompletionSource<TResponse?> promise = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         if (isControl)
-            controlInbox.Enqueue(new(message, sender, promise));
+            controlInbox!.Enqueue(new(message, sender, promise));
         else
             inbox.Enqueue(new(message, sender, promise));
 
@@ -355,7 +464,7 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
         reply = promise.AsValueTask();
 
         if (isControl)
-            controlInbox.Enqueue(new(message, sender, handle));
+            controlInbox!.Enqueue(new(message, sender, handle));
         else
             inbox.Enqueue(new(message, sender, handle));
 
@@ -430,18 +539,26 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
             return true;
         }
 
-        Task timeout = Task.Delay(maxWait);
+        // WaitAsync releases its timer as soon as the drain signal arrives. A Task.WhenAny over a
+        // Task.Delay leaves that timer registered until the full deadline expires, so every actor
+        // that drains early keeps a live timer for the rest of its timeout.
+        bool drainedInTime;
 
-        Task completed = await Task.WhenAny(
-            timeout,
-            drained.Task
-        );
+        try
+        {
+            await drained.Task.WaitAsync(maxWait);
+            drainedInTime = true;
+        }
+        catch (TimeoutException)
+        {
+            drainedInTime = false;
+        }
 
         // Shutdown in both outcomes: a drained inbox must still stop the actor (reject further
         // sends and run PostShutdown), and a timeout forces the stop.
         Shutdown();
 
-        return completed != timeout;
+        return drainedInTime;
     }
 
     /// <summary>
@@ -450,7 +567,7 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
     /// </summary>
     private bool TryDequeueNext(out ActorMessageReply<TRequest, TResponse> message, out bool isControl)
     {
-        if (controlInbox.TryDequeue(out message))
+        if (controlInbox is not null && controlInbox.TryDequeue(out message))
         {
             isControl = true;
             return true;
@@ -509,9 +626,12 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
                     }
 
                     // The caller cancelled or timed out before this message reached the head of the
-                    // queue; its promise is already completed, so skip delivery (the handler never runs).
-                    // A promise-free (TrySend) message has no promise and is always delivered.
+                    // queue; its reply is already completed, so skip delivery (the handler never runs).
+                    // A promise-free (TrySend) message has neither reply channel and is always delivered.
                     if (message.Promise is not null && message.Promise.Task.IsCompleted)
+                        continue;
+
+                    if (!message.PooledHandle.IsDefault && message.PooledHandle.IsCompleted)
                         continue;
 
                     if (message.Sender is not null)
@@ -537,7 +657,13 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
                         message.Promise?.TrySetException(ex);
                         message.PooledHandle.TrySetException(ex);
 
-                        logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
+                        // The arguments (ex.StackTrace formats a whole stack) are built only when the level
+
+                        // is actually enabled; a non-null logger with error logging off paid for them before.
+
+                        if (logger is not null && logger.IsEnabled(LogLevel.Error))
+
+                            logger.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
                     }
                 }
 
@@ -559,7 +685,10 @@ public sealed class ActorRunner<TActor, TRequest, TResponse> : IThreadPoolWorkIt
         }
         catch (Exception ex)
         {
-            logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
+            // The arguments (ex.StackTrace formats a whole stack) are built only when the level
+            // is actually enabled; a non-null logger with error logging off paid for them before.
+            if (logger is not null && logger.IsEnabled(LogLevel.Error))
+                logger.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
             
             //Console.Error.WriteLine(ex.Message);
         }

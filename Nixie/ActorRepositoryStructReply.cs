@@ -88,6 +88,46 @@ public sealed class ActorRepositoryStruct<TActor, TRequest, TResponse> : IActorR
     }
 
     /// <summary>
+    /// Reports both kinds of activity in one scan, so a waiting caller does not enumerate the repository
+    /// twice per round. Pending messages take precedence over a running handler, which is the order the
+    /// two separate checks produced. Both names are null when the repository is idle.
+    /// </summary>
+    /// <param name="pendingActorName"></param>
+    /// <param name="processingActorName"></param>
+    /// <returns></returns>
+    public bool HasActivity(out string? pendingActorName, out string? processingActorName)
+    {
+        string? firstProcessingName = null;
+
+        foreach (KeyValuePair<string, Lazy<(ActorRunnerStruct<TActor, TRequest, TResponse> runner, ActorRefStruct<TActor, TRequest, TResponse> actorRef)>> actor in actors)
+        {
+            Lazy<(ActorRunnerStruct<TActor, TRequest, TResponse> runner, ActorRefStruct<TActor, TRequest, TResponse> actorRef)> lazyValue = actor.Value;
+
+            if (!lazyValue.IsValueCreated)
+                continue;
+
+            ActorRunnerStruct<TActor, TRequest, TResponse> runner = lazyValue.Value.runner;
+
+            if (runner.IsShutdown)
+                continue;
+
+            if (!runner.IsEmpty)
+            {
+                pendingActorName = runner.Name;
+                processingActorName = null;
+                return true;
+            }
+
+            if (firstProcessingName is null && runner.IsProcessing)
+                firstProcessingName = runner.Name;
+        }
+
+        pendingActorName = null;
+        processingActorName = firstProcessingName;
+        return firstProcessingName is not null;
+    }
+
+    /// <summary>
     /// Creates a new actor and returns a reference to it
     /// </summary>
     /// <param name="name"></param>

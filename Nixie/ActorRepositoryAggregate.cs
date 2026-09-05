@@ -88,6 +88,46 @@ public sealed class ActorRepositoryAggregate<TActor, TRequest> : IActorRepositor
     }
 
     /// <summary>
+    /// Reports both kinds of activity in one scan, so a waiting caller does not enumerate the repository
+    /// twice per round. Pending messages take precedence over a running handler, which is the order the
+    /// two separate checks produced. Both names are null when the repository is idle.
+    /// </summary>
+    /// <param name="pendingActorName"></param>
+    /// <param name="processingActorName"></param>
+    /// <returns></returns>
+    public bool HasActivity(out string? pendingActorName, out string? processingActorName)
+    {
+        string? firstProcessingName = null;
+
+        foreach (KeyValuePair<string, Lazy<(ActorRunnerAggregate<TActor, TRequest> runner, ActorRefAggregate<TActor, TRequest> actorRef)>> actor in actors)
+        {
+            Lazy<(ActorRunnerAggregate<TActor, TRequest> runner, ActorRefAggregate<TActor, TRequest> actorRef)> lazyValue = actor.Value;
+
+            if (!lazyValue.IsValueCreated)
+                continue;
+
+            ActorRunnerAggregate<TActor, TRequest> runner = lazyValue.Value.runner;
+
+            if (runner.IsShutdown)
+                continue;
+
+            if (!runner.IsEmpty)
+            {
+                pendingActorName = runner.Name;
+                processingActorName = null;
+                return true;
+            }
+
+            if (firstProcessingName is null && runner.IsProcessing)
+                firstProcessingName = runner.Name;
+        }
+
+        pendingActorName = null;
+        processingActorName = firstProcessingName;
+        return firstProcessingName is not null;
+    }
+
+    /// <summary>
     /// Creates a new actor and returns a reference to it
     /// </summary>
     /// <param name="name"></param>

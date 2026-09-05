@@ -490,10 +490,13 @@ public sealed class ActorSystem : IDisposable
         // Keyed by the closed repository type, not typeof(TActor): one actor class can be used
         // through several repository shapes (or request types), and a TActor-only key would hand
         // back a repository of the wrong closed type and fail the cast below.
-        Lazy<IActorRepositoryRunnable> repository = repositories.GetOrAdd(
-            typeof(ActorRepository<TActor, TRequest, TResponse>),
-            (type) => new(CreateRepository<TActor, TRequest, TResponse>)
-        );
+        Type key = typeof(ActorRepository<TActor, TRequest, TResponse>);
+
+        // A cache hit must not build a factory delegate. The argument to GetOrAdd is created
+        // before the dictionary knows the key exists, so every lookup allocated a delegate that
+        // only a first lookup can use. The Lazy still guarantees one repository per key.
+        if (!repositories.TryGetValue(key, out Lazy<IActorRepositoryRunnable>? repository))
+            repository = repositories.GetOrAdd(key, (type) => new(CreateRepository<TActor, TRequest, TResponse>));
 
         return (ActorRepository<TActor, TRequest, TResponse>)repository.Value;
     }
@@ -514,10 +517,13 @@ public sealed class ActorSystem : IDisposable
     public ActorRepository<TActor, TRequest> GetRepository<TActor, TRequest>()
         where TActor : IActor<TRequest> where TRequest : class
     {
-        Lazy<IActorRepositoryRunnable> repository = repositories.GetOrAdd(
-            typeof(ActorRepository<TActor, TRequest>),
-            CreateRepositoryInternal<TActor, TRequest>
-        );
+        Type key = typeof(ActorRepository<TActor, TRequest>);
+
+        // A cache hit must not build a factory delegate. The argument to GetOrAdd is created
+        // before the dictionary knows the key exists, so every lookup allocated a delegate that
+        // only a first lookup can use. The Lazy still guarantees one repository per key.
+        if (!repositories.TryGetValue(key, out Lazy<IActorRepositoryRunnable>? repository))
+            repository = repositories.GetOrAdd(key, CreateRepositoryInternal<TActor, TRequest>);
 
         return (ActorRepository<TActor, TRequest>)repository.Value;
     }
@@ -544,10 +550,13 @@ public sealed class ActorSystem : IDisposable
     public ActorRepositoryAggregate<TActor, TRequest> GetRepositoryAggregate<TActor, TRequest>()
         where TActor : IActorAggregate<TRequest> where TRequest : class
     {
-        Lazy<IActorRepositoryRunnable> repository = repositories.GetOrAdd(
-            typeof(ActorRepositoryAggregate<TActor, TRequest>),
-            CreateRepositoryInternalAggregate<TActor, TRequest>
-        );
+        Type key = typeof(ActorRepositoryAggregate<TActor, TRequest>);
+
+        // A cache hit must not build a factory delegate. The argument to GetOrAdd is created
+        // before the dictionary knows the key exists, so every lookup allocated a delegate that
+        // only a first lookup can use. The Lazy still guarantees one repository per key.
+        if (!repositories.TryGetValue(key, out Lazy<IActorRepositoryRunnable>? repository))
+            repository = repositories.GetOrAdd(key, CreateRepositoryInternalAggregate<TActor, TRequest>);
 
         return (ActorRepositoryAggregate<TActor, TRequest>)repository.Value;
     }
@@ -574,10 +583,13 @@ public sealed class ActorSystem : IDisposable
     public ActorRepositoryStruct<TActor, TRequest> GetRepositoryStruct<TActor, TRequest>()
         where TActor : IActorStruct<TRequest> where TRequest : struct
     {
-        Lazy<IActorRepositoryRunnable> repository = repositories.GetOrAdd(
-            typeof(ActorRepositoryStruct<TActor, TRequest>),
-            CreateRepositoryStructInternal<TActor, TRequest>
-        );
+        Type key = typeof(ActorRepositoryStruct<TActor, TRequest>);
+
+        // A cache hit must not build a factory delegate. The argument to GetOrAdd is created
+        // before the dictionary knows the key exists, so every lookup allocated a delegate that
+        // only a first lookup can use. The Lazy still guarantees one repository per key.
+        if (!repositories.TryGetValue(key, out Lazy<IActorRepositoryRunnable>? repository))
+            repository = repositories.GetOrAdd(key, CreateRepositoryStructInternal<TActor, TRequest>);
 
         return (ActorRepositoryStruct<TActor, TRequest>)repository.Value;
     }
@@ -605,10 +617,13 @@ public sealed class ActorSystem : IDisposable
     public ActorRepositoryStruct<TActor, TRequest, TResponse> GetRepositoryStruct<TActor, TRequest, TResponse>()
         where TActor : IActorStruct<TRequest, TResponse> where TRequest : struct where TResponse : struct
     {
-        Lazy<IActorRepositoryRunnable> repository = repositories.GetOrAdd(
-            typeof(ActorRepositoryStruct<TActor, TRequest, TResponse>),
-            (type) => new(CreateRepositoryStruct<TActor, TRequest, TResponse>)
-        );
+        Type key = typeof(ActorRepositoryStruct<TActor, TRequest, TResponse>);
+
+        // A cache hit must not build a factory delegate. The argument to GetOrAdd is created
+        // before the dictionary knows the key exists, so every lookup allocated a delegate that
+        // only a first lookup can use. The Lazy still guarantees one repository per key.
+        if (!repositories.TryGetValue(key, out Lazy<IActorRepositoryRunnable>? repository))
+            repository = repositories.GetOrAdd(key, (type) => new(CreateRepositoryStruct<TActor, TRequest, TResponse>));
 
         return (ActorRepositoryStruct<TActor, TRequest, TResponse>)repository.Value;
     }
@@ -629,10 +644,13 @@ public sealed class ActorSystem : IDisposable
     public ActorRepositoryAggregate<TActor, TRequest, TResponse> GetRepositoryAggregate<TActor, TRequest, TResponse>()
         where TActor : IActorAggregate<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
-        Lazy<IActorRepositoryRunnable> repository = repositories.GetOrAdd(
-            typeof(ActorRepositoryAggregate<TActor, TRequest, TResponse>),
-            CreateRepositoryInternalAggregate<TActor, TRequest, TResponse>
-        );
+        Type key = typeof(ActorRepositoryAggregate<TActor, TRequest, TResponse>);
+
+        // A cache hit must not build a factory delegate. The argument to GetOrAdd is created
+        // before the dictionary knows the key exists, so every lookup allocated a delegate that
+        // only a first lookup can use. The Lazy still guarantees one repository per key.
+        if (!repositories.TryGetValue(key, out Lazy<IActorRepositoryRunnable>? repository))
+            repository = repositories.GetOrAdd(key, CreateRepositoryInternalAggregate<TActor, TRequest, TResponse>);
 
         return (ActorRepositoryAggregate<TActor, TRequest, TResponse>)repository.Value;
     }
@@ -925,7 +943,9 @@ public sealed class ActorSystem : IDisposable
                 if (!lazyRepository.IsValueCreated)
                     continue;
 
-                if (lazyRepository.Value.HasPendingMessages(out pendingActorName) || lazyRepository.Value.IsProcessing(out processingName))
+                // One scan per repository per round: the two separate checks enumerated every actor twice
+                // to rediscover almost the same state.
+                if (lazyRepository.Value.HasActivity(out pendingActorName, out processingName))
                 {
                     completed = false;
                     break;

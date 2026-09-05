@@ -1,4 +1,5 @@
-﻿
+﻿using System.Runtime.CompilerServices;
+
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nixie;
@@ -51,13 +52,15 @@ public sealed class ActorRef<TActor, TRequest, TResponse> : IGenericActorRef, IA
     }
 
     /// <summary>
-    /// Passes a message to the actor without expecting a response and specifying a parent promise
+    /// Forwards a message to the actor on behalf of a parent envelope, so the actor replies to the
+    /// original caller. A router uses this after it sets <c>ByPassReply</c>. The forward allocates no
+    /// promise of its own, and it preserves the parent's reply channel, ordinary or pooled.
     /// </summary>
     /// <param name="message"></param>
     /// <param name="parentPromise"></param>
     public void Send(TRequest message, ActorMessageReply<TRequest, TResponse>? parentPromise)
     {
-        runner.SendAndTryDeliver(message, null, parentPromise);
+        runner.Forward(message, null, parentPromise);
     }
 
     /// <summary>
@@ -253,25 +256,15 @@ public sealed class ActorRef<TActor, TRequest, TResponse> : IGenericActorRef, IA
     /// <param name="message"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    public async Task<TResponse?> Ask(TRequest message, CancellationToken cancellationToken)
+    public Task<TResponse?> Ask(TRequest message, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        // A token that can never be cancelled needs neither a registration nor an async wrapper, so the
+        // promise's own task is returned directly. Such a token is also never already-cancelled, which
+        // is why the cancellation check belongs to the cancellable path alone.
+        if (!cancellationToken.CanBeCanceled)
+            return AskWithoutCancellation(message, null);
 
-        TaskCompletionSource<TResponse?> promise = runner.SendAndTryDeliver(message, null, null);
-
-        CancellationTokenRegistration registration = cancellationToken.Register(
-            static (state, token) => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(token),
-            promise
-        );
-
-        try
-        {
-            return await promise.Task;
-        }
-        finally
-        {
-            registration.Dispose();
-        }
+        return AskWithCancellation(message, null, cancellationToken);
     }
 
     /// <summary>
@@ -291,10 +284,16 @@ public sealed class ActorRef<TActor, TRequest, TResponse> : IGenericActorRef, IA
         TaskCompletionSource<TResponse?> promise = runner.SendAndTryDeliver(message, null, null);
 
         using CancellationTokenSource timeoutCancellationTokenSource = new(timeout);
-        using CancellationTokenSource linkedCancellationTokenSource =
-            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCancellationTokenSource.Token);
 
-        CancellationTokenRegistration registration = linkedCancellationTokenSource.Token.Register(
+        // A token that can never be cancelled contributes nothing to a linked source, so the timeout
+        // source alone drives the wait and no linked source is created.
+        using CancellationTokenSource? linkedCancellationTokenSource = cancellationToken.CanBeCanceled
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCancellationTokenSource.Token)
+            : null;
+
+        CancellationToken waitCancellationToken = linkedCancellationTokenSource?.Token ?? timeoutCancellationTokenSource.Token;
+
+        CancellationTokenRegistration registration = waitCancellationToken.Register(
             static (state, token) => ((TaskCompletionSource<TResponse?>)state!).TrySetCanceled(token),
             promise
         );
@@ -303,7 +302,7 @@ public sealed class ActorRef<TActor, TRequest, TResponse> : IGenericActorRef, IA
         {
             return await promise.Task;
         }
-        catch (OperationCanceledException ex) when (ex.CancellationToken == linkedCancellationTokenSource.Token && timeoutCancellationTokenSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (ex.CancellationToken == waitCancellationToken && timeoutCancellationTokenSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
             throw new AskTimeoutException($"Timeout after {timeout} waiting for a reply");
         }
@@ -321,7 +320,51 @@ public sealed class ActorRef<TActor, TRequest, TResponse> : IGenericActorRef, IA
     /// <param name="sender"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    public async Task<TResponse?> Ask(TRequest message, IGenericActorRef sender, CancellationToken cancellationToken)
+    public Task<TResponse?> Ask(TRequest message, IGenericActorRef sender, CancellationToken cancellationToken)
+    {
+        // A token that can never be cancelled needs neither a registration nor an async wrapper, so the
+        // promise's own task is returned directly. Such a token is also never already-cancelled, which
+        // is why the cancellation check belongs to the cancellable path alone.
+        if (!cancellationToken.CanBeCanceled)
+            return AskWithoutCancellation(message, sender);
+
+        return AskWithCancellation(message, sender, cancellationToken);
+    }
+
+    /// <summary>
+    /// Ask on a token that cannot be cancelled. It returns the promise's own task, so the call costs
+    /// neither a cancellation registration nor a suspended async wrapper.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="sender"></param>
+    /// <returns></returns>
+    private Task<TResponse?> AskWithoutCancellation(TRequest message, IGenericActorRef? sender)
+    {
+        try
+        {
+            return runner.SendAndTryDeliver(message, sender, null).Task;
+        }
+        catch (Exception exception)
+        {
+            // The async overload reported a synchronous failure through the returned task, and it
+            // reported an OperationCanceledException as a cancelled task instead of a faulted one.
+            // The builder reproduces both outcomes exactly.
+            AsyncTaskMethodBuilder<TResponse?> builder = AsyncTaskMethodBuilder<TResponse?>.Create();
+            builder.SetException(exception);
+            return builder.Task;
+        }
+    }
+
+    /// <summary>
+    /// Ask on a token that can be cancelled. If the token trips before the actor starts to process the
+    /// message, the message is skipped and never delivered; if it trips while the handler already runs,
+    /// the handler completes but the returned task is still cancelled.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="sender"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    private async Task<TResponse?> AskWithCancellation(TRequest message, IGenericActorRef? sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 

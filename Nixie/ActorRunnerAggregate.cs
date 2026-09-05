@@ -181,18 +181,26 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> : IThreadPoolWorkItem
             return true;
         }
 
-        Task timeout = Task.Delay(maxWait);
+        // WaitAsync releases its timer as soon as the drain signal arrives. A Task.WhenAny over a
+        // Task.Delay leaves that timer registered until the full deadline expires, so every actor
+        // that drains early keeps a live timer for the rest of its timeout.
+        bool drainedInTime;
 
-        Task completed = await Task.WhenAny(
-            timeout,
-            drained.Task
-        );
+        try
+        {
+            await drained.Task.WaitAsync(maxWait);
+            drainedInTime = true;
+        }
+        catch (TimeoutException)
+        {
+            drainedInTime = false;
+        }
 
         // Shutdown in both outcomes: a drained inbox must still stop the actor (reject further
         // sends and run PostShutdown), and a timeout forces the stop.
         Shutdown();
 
-        return completed != timeout;
+        return drainedInTime;
     }
 
     /// <summary>
@@ -250,11 +258,16 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> : IThreadPoolWorkItem
                         }
                         catch (Exception ex)
                         {
-                            logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
+                            // The arguments (ex.StackTrace formats a whole stack) are built only when the level
+                            // is actually enabled; a non-null logger with error logging off paid for them before.
+                            if (logger is not null && logger.IsEnabled(LogLevel.Error))
+                                logger.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
                         }
 
+                        int lastBatchSize = messages.Count;
+
                         messages.Clear();
-                        TrimBatchListIfNeeded();
+                        TrimBatchListIfNeeded(lastBatchSize);
                     }
 
                 } while (!inbox.IsEmpty);
@@ -282,7 +295,10 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> : IThreadPoolWorkItem
         }
         catch (Exception ex)
         {
-            logger?.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
+            // The arguments (ex.StackTrace formats a whole stack) are built only when the level
+            // is actually enabled; a non-null logger with error logging off paid for them before.
+            if (logger is not null && logger.IsEnabled(LogLevel.Error))
+                logger.LogError("[{Actor}] {Exception}: {Message}\n{StackTrace}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
             
             // Console.WriteLine("[{0}] {1}: {2}\n{3}", Name, ex.GetType().Name, ex.Message, ex.StackTrace);
         }
@@ -323,9 +339,16 @@ public sealed class ActorRunnerAggregate<TActor, TRequest> : IThreadPoolWorkItem
         return false;
     }
 
-    private void TrimBatchListIfNeeded()
+    /// <summary>
+    /// Releases an oversized batch buffer, but keeps capacity that recurring large batches actually use.
+    /// A buffer released after every large batch makes the next large batch allocate and regrow its array
+    /// again, which is the common case under repeated bursts. The first batch that leaves most of the
+    /// buffer unused releases it, so a single peak is not retained.
+    /// </summary>
+    /// <param name="lastBatchSize"></param>
+    private void TrimBatchListIfNeeded(int lastBatchSize)
     {
-        if (messages.Capacity > LargeBatchCapacityThreshold)
+        if (messages.Capacity > LargeBatchCapacityThreshold && lastBatchSize < messages.Capacity / 2)
             messages = [];
     }
 }
