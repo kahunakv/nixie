@@ -1,4 +1,5 @@
 ﻿
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -11,7 +12,7 @@ namespace Nixie;
 /// <typeparam name="TActor"></typeparam>
 /// <typeparam name="TRequest"></typeparam>
 /// <typeparam name="TResponse"></typeparam>
-public sealed class ActorRepositoryStruct<TActor, TRequest, TResponse> : IActorRepositoryRunnable
+public sealed class ActorRepositoryStruct<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse> : IActorRepositoryRunnable
     where TActor : IActorStruct<TRequest, TResponse> where TRequest : struct where TResponse : struct
 {
     private readonly ActorSystem actorSystem;

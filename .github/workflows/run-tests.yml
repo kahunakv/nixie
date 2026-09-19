@@ -23,3 +23,17 @@ jobs:
       - name: Run Tests 
         run: (cd Nixie.Tests && dotnet test -l "console;verbosity=detailed")      
 
+  Nixie-Trim-Tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Install .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+      - name: Publish trimmed app
+        run: dotnet publish Nixie.TrimTests -c Release -r linux-x64 -o trim-out
+      - name: Run trimmed app
+        run: ./trim-out/Nixie.TrimTests

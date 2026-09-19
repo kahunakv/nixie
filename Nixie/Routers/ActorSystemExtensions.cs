@@ -1,4 +1,5 @@
 ﻿
+using System.Diagnostics.CodeAnalysis;
 namespace Nixie.Routers;
 
 /// <summary>
@@ -15,7 +16,7 @@ public static class ActorSystemExtensions
     /// <param name="name"></param>
     /// <param name="instances"></param>
     /// <returns></returns>
-    public static IActorRef<RoundRobinActor<TActor, TRequest>, TRequest> CreateRoundRobinRouter<TActor, TRequest>(
+    public static IActorRef<RoundRobinActor<TActor, TRequest>, TRequest> CreateRoundRobinRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(
         this ActorSystem actorSystem,
         string name,
         int instances
@@ -33,7 +34,7 @@ public static class ActorSystemExtensions
     /// <param name="actorSystem"></param>
     /// <param name="instances"></param>
     /// <returns></returns>
-    public static IActorRef<RoundRobinActor<TActor, TRequest>, TRequest> CreateRoundRobinRouter<TActor, TRequest>(
+    public static IActorRef<RoundRobinActor<TActor, TRequest>, TRequest> CreateRoundRobinRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(
         this ActorSystem actorSystem,        
         int instances
     )
@@ -51,7 +52,7 @@ public static class ActorSystemExtensions
     /// <param name="name"></param>
     /// <param name="instances"></param>
     /// <returns></returns>
-    public static IActorRef<RoundRobinActor<TActor, TRequest>, TRequest> CreateRoundRobinRouter<TActor, TRequest>(
+    public static IActorRef<RoundRobinActor<TActor, TRequest>, TRequest> CreateRoundRobinRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(
         this ActorSystem actorSystem,
         string name,
         List<IActorRef<TActor, TRequest>> instances
@@ -69,7 +70,7 @@ public static class ActorSystemExtensions
     /// <param name="actorSystem"></param>
     /// <param name="instances"></param>
     /// <returns></returns>
-    public static IActorRef<RoundRobinActor<TActor, TRequest>, TRequest> CreateRoundRobinRouter<TActor, TRequest>(
+    public static IActorRef<RoundRobinActor<TActor, TRequest>, TRequest> CreateRoundRobinRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(
         this ActorSystem actorSystem,
         List<IActorRef<TActor, TRequest>> instances
     )
@@ -89,7 +90,7 @@ public static class ActorSystemExtensions
     /// <param name="instances"></param>
     /// <returns></returns>
     public static IActorRef<RoundRobinActor<TActor, TRequest, TResponse>, TRequest, TResponse>
-        CreateRoundRobinRouter<TActor, TRequest, TResponse>(
+        CreateRoundRobinRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(
             this ActorSystem actorSystem,
             string name,
             int instances
@@ -109,7 +110,7 @@ public static class ActorSystemExtensions
     /// <param name="instances"></param>
     /// <returns></returns>
     public static IActorRef<RoundRobinActor<TActor, TRequest, TResponse>, TRequest, TResponse>
-        CreateRoundRobinRouter<TActor, TRequest, TResponse>(
+        CreateRoundRobinRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(
             this ActorSystem actorSystem,
             int instances
         )
@@ -129,7 +130,7 @@ public static class ActorSystemExtensions
     /// <param name="instances"></param>
     /// <returns></returns>
     public static IActorRef<RoundRobinActor<TActor, TRequest, TResponse>, TRequest, TResponse>
-        CreateRoundRobinRouter<TActor, TRequest, TResponse>(
+        CreateRoundRobinRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(
             this ActorSystem actorSystem,
             string name,
             List<IActorRef<TActor, TRequest, TResponse>> instances
@@ -149,7 +150,7 @@ public static class ActorSystemExtensions
     /// <param name="instances"></param>
     /// <returns></returns>
     public static IActorRef<RoundRobinActor<TActor, TRequest, TResponse>, TRequest, TResponse>
-        CreateRoundRobinRouter<TActor, TRequest, TResponse>(
+        CreateRoundRobinRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(
             this ActorSystem actorSystem,
             List<IActorRef<TActor, TRequest, TResponse>> instances
         )
@@ -167,7 +168,7 @@ public static class ActorSystemExtensions
     /// <param name="name"></param>
     /// <param name="instances"></param>
     /// <returns></returns>
-    public static IActorRef<ConsistentHashActor<TActor, TRequest>, TRequest> CreateConsistentHashRouter<TActor, TRequest>(
+    public static IActorRef<ConsistentHashActor<TActor, TRequest>, TRequest> CreateConsistentHashRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(
         this ActorSystem actorSystem,
         string name,
         int instances
@@ -185,7 +186,7 @@ public static class ActorSystemExtensions
     /// <param name="actorSystem"></param>
     /// <param name="instances"></param>
     /// <returns></returns>
-    public static IActorRef<ConsistentHashActor<TActor, TRequest>, TRequest> CreateConsistentHashRouter<TActor, TRequest>(
+    public static IActorRef<ConsistentHashActor<TActor, TRequest>, TRequest> CreateConsistentHashRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(
         this ActorSystem actorSystem,
         int instances
     )
@@ -203,7 +204,7 @@ public static class ActorSystemExtensions
     /// <param name="name"></param>
     /// <param name="instances"></param>
     /// <returns></returns>
-    public static IActorRef<ConsistentHashActor<TActor, TRequest>, TRequest> CreateConsistentHashRouter<TActor, TRequest>(
+    public static IActorRef<ConsistentHashActor<TActor, TRequest>, TRequest> CreateConsistentHashRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(
         this ActorSystem actorSystem,
         string name,
         List<IActorRef<TActor, TRequest>> instances
@@ -221,7 +222,7 @@ public static class ActorSystemExtensions
     /// <param name="actorSystem"></param>
     /// <param name="instances"></param>
     /// <returns></returns>
-    public static IActorRef<ConsistentHashActor<TActor, TRequest>, TRequest> CreateConsistentHashRouter<TActor, TRequest>(
+    public static IActorRef<ConsistentHashActor<TActor, TRequest>, TRequest> CreateConsistentHashRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(
         this ActorSystem actorSystem,
         List<IActorRef<TActor, TRequest>> instances
     )
@@ -241,7 +242,7 @@ public static class ActorSystemExtensions
     /// <param name="instances"></param>
     /// <returns></returns>
     public static IActorRef<ConsistentHashActor<TActor, TRequest, TResponse>, TRequest, TResponse>
-        CreateConsistentHashRouter<TActor, TRequest, TResponse>(
+        CreateConsistentHashRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(
             this ActorSystem actorSystem,
             string name,
             int instances
@@ -261,7 +262,7 @@ public static class ActorSystemExtensions
     /// <param name="instances"></param>
     /// <returns></returns>
     public static IActorRef<ConsistentHashActor<TActor, TRequest, TResponse>, TRequest, TResponse>
-        CreateConsistentHashRouter<TActor, TRequest, TResponse>(
+        CreateConsistentHashRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(
             this ActorSystem actorSystem,
             int instances
         )
@@ -281,7 +282,7 @@ public static class ActorSystemExtensions
     /// <param name="instances"></param>
     /// <returns></returns>
     public static IActorRef<ConsistentHashActor<TActor, TRequest, TResponse>, TRequest, TResponse>
-        CreateConsistentHashRouter<TActor, TRequest, TResponse>(
+        CreateConsistentHashRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(
             this ActorSystem actorSystem,
             string name,
             List<IActorRef<TActor, TRequest, TResponse>> instances
@@ -301,7 +302,7 @@ public static class ActorSystemExtensions
     /// <param name="instances"></param>
     /// <returns></returns>
     public static IActorRef<ConsistentHashActor<TActor, TRequest, TResponse>, TRequest, TResponse>
-        CreateConsistentHashRouter<TActor, TRequest, TResponse>(
+        CreateConsistentHashRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(
             this ActorSystem actorSystem,
             List<IActorRef<TActor, TRequest, TResponse>> instances
         )
@@ -319,7 +320,7 @@ public static class ActorSystemExtensions
     /// <param name="name"></param>
     /// <param name="instances"></param>
     /// <returns></returns>
-    public static IActorRef<BalancingActor<TActor, TRequest>, TRequest> CreateBalancingRouter<TActor, TRequest>(
+    public static IActorRef<BalancingActor<TActor, TRequest>, TRequest> CreateBalancingRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(
         this ActorSystem actorSystem,
         string name,
         int instances
@@ -337,7 +338,7 @@ public static class ActorSystemExtensions
     /// <param name="actorSystem"></param>
     /// <param name="instances"></param>
     /// <returns></returns>
-    public static IActorRef<BalancingActor<TActor, TRequest>, TRequest> CreateBalancingRouter<TActor, TRequest>(
+    public static IActorRef<BalancingActor<TActor, TRequest>, TRequest> CreateBalancingRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(
         this ActorSystem actorSystem,
         int instances
     )
@@ -355,7 +356,7 @@ public static class ActorSystemExtensions
     /// <param name="name"></param>
     /// <param name="instances"></param>
     /// <returns></returns>
-    public static IActorRef<BalancingActor<TActor, TRequest>, TRequest> CreateBalancingRouter<TActor, TRequest>(
+    public static IActorRef<BalancingActor<TActor, TRequest>, TRequest> CreateBalancingRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(
         this ActorSystem actorSystem,
         string name,
         List<IActorRef<TActor, TRequest>> instances
@@ -373,7 +374,7 @@ public static class ActorSystemExtensions
     /// <param name="actorSystem"></param>
     /// <param name="instances"></param>
     /// <returns></returns>
-    public static IActorRef<BalancingActor<TActor, TRequest>, TRequest> CreateBalancingRouter<TActor, TRequest>(
+    public static IActorRef<BalancingActor<TActor, TRequest>, TRequest> CreateBalancingRouter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(
         this ActorSystem actorSystem,
         List<IActorRef<TActor, TRequest>> instances
     )

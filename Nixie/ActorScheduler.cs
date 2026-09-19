@@ -1,4 +1,5 @@
 ﻿
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 
@@ -209,7 +210,7 @@ public class ActorScheduler : IDisposable
     /// <param name="request"></param>
     /// <param name="delay"></param>
     /// <returns></returns>
-    public Timer ScheduleShutdown<TActor, TRequest, TResponse>(IActorRef<TActor, TRequest, TResponse> actorRef, TimeSpan delay)
+    public Timer ScheduleShutdown<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(IActorRef<TActor, TRequest, TResponse> actorRef, TimeSpan delay)
         where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         // Registered in onceTimers so the Timer stays rooted (System.Threading.Timer is not
@@ -221,7 +222,7 @@ public class ActorScheduler : IDisposable
         return timer.Value;
     }
 
-    private void ShutdownScheduled<TActor, TRequest, TResponse>(IActorRef<TActor, TRequest, TResponse> actorRef, long seq)
+    private void ShutdownScheduled<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(IActorRef<TActor, TRequest, TResponse> actorRef, long seq)
         where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         try
@@ -244,7 +245,7 @@ public class ActorScheduler : IDisposable
     /// <param name="request"></param>
     /// <param name="delay"></param>
     /// <returns></returns>
-    public Timer ScheduleShutdown<TActor, TRequest>(IActorRef<TActor, TRequest> actorRef, TimeSpan delay)
+    public Timer ScheduleShutdown<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(IActorRef<TActor, TRequest> actorRef, TimeSpan delay)
         where TActor : IActor<TRequest> where TRequest : class
     {
         long seq = Interlocked.Increment(ref sequence);
@@ -253,7 +254,7 @@ public class ActorScheduler : IDisposable
         return timer.Value;
     }
 
-    private void ShutdownScheduled<TActor, TRequest>(IActorRef<TActor, TRequest> actorRef, long seq)
+    private void ShutdownScheduled<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(IActorRef<TActor, TRequest> actorRef, long seq)
         where TActor : IActor<TRequest> where TRequest : class
     {
         try

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 namespace Nixie.Routers;
 
 /// <summary>
@@ -11,7 +12,7 @@ namespace Nixie.Routers;
 /// <typeparam name="TActor"></typeparam>
 /// <typeparam name="TRequest"></typeparam>
 /// <typeparam name="TResponse"></typeparam>
-public class RoundRobinActorStruct<TActor, TRequest, TResponse> : IActorStruct<TRequest, TResponse>
+public class RoundRobinActorStruct<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse> : IActorStruct<TRequest, TResponse>
     where TActor : IActorStruct<TRequest, TResponse> where TRequest : struct where TResponse : struct
 {
     private int position = -1;

@@ -1,4 +1,5 @@
 
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -10,7 +11,7 @@ namespace Nixie;
 /// </summary>
 /// <typeparam name="TActor"></typeparam>
 /// <typeparam name="TRequest"></typeparam>
-public sealed class ActorRepositoryAggregate<TActor, TRequest> : IActorRepositoryRunnable 
+public sealed class ActorRepositoryAggregate<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest> : IActorRepositoryRunnable 
     where TActor : IActorAggregate<TRequest> where TRequest : class
 {
     private readonly ActorSystem actorSystem;

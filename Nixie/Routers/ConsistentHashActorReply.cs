@@ -1,4 +1,5 @@
 ﻿
+using System.Diagnostics.CodeAnalysis;
 namespace Nixie.Routers;
 
 /// <summary>
@@ -6,7 +7,7 @@ namespace Nixie.Routers;
 /// </summary>
 /// <typeparam name="TActor"></typeparam>
 /// <typeparam name="TRequest"></typeparam>
-public class ConsistentHashActor<TActor, TRequest, TResponse> : IActor<TRequest, TResponse>
+public class ConsistentHashActor<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse> : IActor<TRequest, TResponse>
     where TActor : IActor<TRequest, TResponse> where TRequest : class, IConsistentHashable where TResponse : class?
 {
     private readonly IActorContext<ConsistentHashActor<TActor, TRequest, TResponse>, TRequest, TResponse> context;

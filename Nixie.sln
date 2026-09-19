@@ -9,6 +9,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nixie.Tests", "Nixie.Tests\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nixie.Benchmarks", "Nixie.Benchmarks\Nixie.Benchmarks.csproj", "{E739BB13-DA29-42CB-9454-1A6809B36D04}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nixie.TrimTests", "Nixie.TrimTests\Nixie.TrimTests.csproj", "{AC428F74-1915-4F23-9130-DE97ABD08E9A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -55,6 +57,18 @@ Global
 		{E739BB13-DA29-42CB-9454-1A6809B36D04}.Release|x64.Build.0 = Release|Any CPU
 		{E739BB13-DA29-42CB-9454-1A6809B36D04}.Release|x86.ActiveCfg = Release|Any CPU
 		{E739BB13-DA29-42CB-9454-1A6809B36D04}.Release|x86.Build.0 = Release|Any CPU
+		{AC428F74-1915-4F23-9130-DE97ABD08E9A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AC428F74-1915-4F23-9130-DE97ABD08E9A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AC428F74-1915-4F23-9130-DE97ABD08E9A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{AC428F74-1915-4F23-9130-DE97ABD08E9A}.Debug|x64.Build.0 = Debug|Any CPU
+		{AC428F74-1915-4F23-9130-DE97ABD08E9A}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{AC428F74-1915-4F23-9130-DE97ABD08E9A}.Debug|x86.Build.0 = Debug|Any CPU
+		{AC428F74-1915-4F23-9130-DE97ABD08E9A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC428F74-1915-4F23-9130-DE97ABD08E9A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AC428F74-1915-4F23-9130-DE97ABD08E9A}.Release|x64.ActiveCfg = Release|Any CPU
+		{AC428F74-1915-4F23-9130-DE97ABD08E9A}.Release|x64.Build.0 = Release|Any CPU
+		{AC428F74-1915-4F23-9130-DE97ABD08E9A}.Release|x86.ActiveCfg = Release|Any CPU
+		{AC428F74-1915-4F23-9130-DE97ABD08E9A}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

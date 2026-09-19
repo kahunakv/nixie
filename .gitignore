@@ -5,6 +5,8 @@ Nixie.Tests/bin
 Nixie.Tests/obj
 Nixie.Benchmarks/bin/
 Nixie.Benchmarks/obj
+Nixie.TrimTests/bin
+Nixie.TrimTests/obj
 .vs/
 .DS_Store
 .idea

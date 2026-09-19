@@ -1,4 +1,5 @@
 ﻿
+using System.Diagnostics.CodeAnalysis;
 using Nixie.Actors;
 using Nixie.Utils;
 using Microsoft.Extensions.Logging;
@@ -52,7 +53,7 @@ public sealed class ActorSystem : IDisposable
     /// <param name="name"></param>
     /// <param name="args"></param>
     /// <returns></returns>
-    public IActorRef<TActor, TRequest, TResponse> Spawn<TActor, TRequest, TResponse>(string? name = null, params object[]? args)
+    public IActorRef<TActor, TRequest, TResponse> Spawn<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(string? name = null, params object[]? args)
         where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         ActorRepository<TActor, TRequest, TResponse> repository = GetRepository<TActor, TRequest, TResponse>();
@@ -63,7 +64,7 @@ public sealed class ActorSystem : IDisposable
     /// <summary>
     /// Creates a new request/response actor with options (e.g. a bounded inbox) and returns a typed reference.
     /// </summary>
-    public IActorRef<TActor, TRequest, TResponse> SpawnWithOptions<TActor, TRequest, TResponse>(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRef<TActor, TRequest, TResponse> SpawnWithOptions<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(string? name, ActorRunnerOptions? options, params object[]? args)
         where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         ActorRepository<TActor, TRequest, TResponse> repository = GetRepository<TActor, TRequest, TResponse>();
@@ -80,7 +81,7 @@ public sealed class ActorSystem : IDisposable
     /// <param name="name"></param>
     /// <param name="args"></param>
     /// <returns></returns>
-    public IActorRefAggregate<TActor, TRequest> SpawnAggregate<TActor, TRequest>(string? name = null, params object[]? args)
+    public IActorRefAggregate<TActor, TRequest> SpawnAggregate<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(string? name = null, params object[]? args)
         where TActor : IActorAggregate<TRequest> where TRequest : class
     {
         ActorRepositoryAggregate<TActor, TRequest> repository = GetRepositoryAggregate<TActor, TRequest>();
@@ -91,7 +92,7 @@ public sealed class ActorSystem : IDisposable
     /// <summary>
     /// Creates a new fire-n-forget aggregate actor with options (e.g. a bounded inbox) and returns a typed reference.
     /// </summary>
-    public IActorRefAggregate<TActor, TRequest> SpawnAggregateWithOptions<TActor, TRequest>(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRefAggregate<TActor, TRequest> SpawnAggregateWithOptions<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(string? name, ActorRunnerOptions? options, params object[]? args)
         where TActor : IActorAggregate<TRequest> where TRequest : class
     {
         ActorRepositoryAggregate<TActor, TRequest> repository = GetRepositoryAggregate<TActor, TRequest>();
@@ -107,7 +108,7 @@ public sealed class ActorSystem : IDisposable
     /// <param name="name"></param>
     /// <param name="args"></param>
     /// <returns></returns>
-    public IActorRef<TActor, TRequest> Spawn<TActor, TRequest>(string? name = null, params object[]? args)
+    public IActorRef<TActor, TRequest> Spawn<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(string? name = null, params object[]? args)
         where TActor : IActor<TRequest> where TRequest : class
     {
         ActorRepository<TActor, TRequest> repository = GetRepository<TActor, TRequest>();
@@ -118,7 +119,7 @@ public sealed class ActorSystem : IDisposable
     /// <summary>
     /// Creates a new fire-n-forget actor with options (e.g. a bounded inbox) and returns a typed reference.
     /// </summary>
-    public IActorRef<TActor, TRequest> SpawnWithOptions<TActor, TRequest>(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRef<TActor, TRequest> SpawnWithOptions<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(string? name, ActorRunnerOptions? options, params object[]? args)
         where TActor : IActor<TRequest> where TRequest : class
     {
         ActorRepository<TActor, TRequest> repository = GetRepository<TActor, TRequest>();
@@ -135,7 +136,7 @@ public sealed class ActorSystem : IDisposable
     /// <param name="name"></param>
     /// <param name="args"></param>
     /// <returns></returns>
-    public IActorRefStruct<TActor, TRequest, TResponse> SpawnStruct<TActor, TRequest, TResponse>(string? name = null, params object[]? args)
+    public IActorRefStruct<TActor, TRequest, TResponse> SpawnStruct<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(string? name = null, params object[]? args)
         where TActor : IActorStruct<TRequest, TResponse> where TRequest : struct where TResponse : struct
     {
         ActorRepositoryStruct<TActor, TRequest, TResponse> repository = GetRepositoryStruct<TActor, TRequest, TResponse>();
@@ -146,7 +147,7 @@ public sealed class ActorSystem : IDisposable
     /// <summary>
     /// Creates a new request/response struct actor with options (e.g. a bounded inbox) and returns a typed reference.
     /// </summary>
-    public IActorRefStruct<TActor, TRequest, TResponse> SpawnStructWithOptions<TActor, TRequest, TResponse>(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRefStruct<TActor, TRequest, TResponse> SpawnStructWithOptions<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(string? name, ActorRunnerOptions? options, params object[]? args)
         where TActor : IActorStruct<TRequest, TResponse> where TRequest : struct where TResponse : struct
     {
         ActorRepositoryStruct<TActor, TRequest, TResponse> repository = GetRepositoryStruct<TActor, TRequest, TResponse>();
@@ -162,7 +163,7 @@ public sealed class ActorSystem : IDisposable
     /// <param name="name"></param>
     /// <param name="args"></param>
     /// <returns></returns>
-    public IActorRefStruct<TActor, TRequest> SpawnStruct<TActor, TRequest>(string? name = null, params object[]? args)
+    public IActorRefStruct<TActor, TRequest> SpawnStruct<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(string? name = null, params object[]? args)
         where TActor : IActorStruct<TRequest> where TRequest : struct
     {
         ActorRepositoryStruct<TActor, TRequest> repository = GetRepositoryStruct<TActor, TRequest>();
@@ -173,7 +174,7 @@ public sealed class ActorSystem : IDisposable
     /// <summary>
     /// Creates a new fire-n-forget struct actor with options (e.g. a bounded inbox) and returns a typed reference.
     /// </summary>
-    public IActorRefStruct<TActor, TRequest> SpawnStructWithOptions<TActor, TRequest>(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRefStruct<TActor, TRequest> SpawnStructWithOptions<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(string? name, ActorRunnerOptions? options, params object[]? args)
         where TActor : IActorStruct<TRequest> where TRequest : struct
     {
         ActorRepositoryStruct<TActor, TRequest> repository = GetRepositoryStruct<TActor, TRequest>();
@@ -190,7 +191,7 @@ public sealed class ActorSystem : IDisposable
     /// <param name="name"></param>
     /// <param name="args"></param>
     /// <returns></returns>
-    public IActorRefAggregate<TActor, TRequest, TResponse> SpawnAggregate<TActor, TRequest, TResponse>(string? name = null, params object[]? args)
+    public IActorRefAggregate<TActor, TRequest, TResponse> SpawnAggregate<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(string? name = null, params object[]? args)
         where TActor : IActorAggregate<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         ActorRepositoryAggregate<TActor, TRequest, TResponse> repository = GetRepositoryAggregate<TActor, TRequest, TResponse>();
@@ -201,7 +202,7 @@ public sealed class ActorSystem : IDisposable
     /// <summary>
     /// Creates a new request/response aggregate actor with options (e.g. a bounded inbox) and returns a typed reference.
     /// </summary>
-    public IActorRefAggregate<TActor, TRequest, TResponse> SpawnAggregateWithOptions<TActor, TRequest, TResponse>(string? name, ActorRunnerOptions? options, params object[]? args)
+    public IActorRefAggregate<TActor, TRequest, TResponse> SpawnAggregateWithOptions<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(string? name, ActorRunnerOptions? options, params object[]? args)
         where TActor : IActorAggregate<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         ActorRepositoryAggregate<TActor, TRequest, TResponse> repository = GetRepositoryAggregate<TActor, TRequest, TResponse>();
@@ -217,7 +218,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TResponse"></typeparam>
     /// <param name="name"></param>
     /// <returns></returns>
-    public IActorRef<TActor, TRequest, TResponse>? Get<TActor, TRequest, TResponse>(string name)
+    public IActorRef<TActor, TRequest, TResponse>? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(string name)
         where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class
     {
         ActorRepository<TActor, TRequest, TResponse> repository = GetRepository<TActor, TRequest, TResponse>();
@@ -233,7 +234,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TResponse"></typeparam>
     /// <param name="name"></param>
     /// <returns></returns>
-    public IActorRef<TActor, TRequest>? Get<TActor, TRequest>(string name) where TActor : IActor<TRequest>
+    public IActorRef<TActor, TRequest>? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(string name) where TActor : IActor<TRequest>
         where TRequest : class
     {
         ActorRepository<TActor, TRequest> repository = GetRepository<TActor, TRequest>();
@@ -249,7 +250,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TResponse"></typeparam>
     /// <param name="name"></param>
     /// <returns></returns>
-    public IActorRefStruct<TActor, TRequest>? GetStruct<TActor, TRequest>(string name) where TActor : IActorStruct<TRequest>
+    public IActorRefStruct<TActor, TRequest>? GetStruct<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(string name) where TActor : IActorStruct<TRequest>
         where TRequest : struct
     {
         ActorRepositoryStruct<TActor, TRequest> repository = GetRepositoryStruct<TActor, TRequest>();
@@ -265,7 +266,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TResponse"></typeparam>
     /// <param name="name"></param>
     /// <returns></returns>
-    public bool Shutdown<TActor, TRequest, TResponse>(string name) where TActor : IActor<TRequest, TResponse>
+    public bool Shutdown<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(string name) where TActor : IActor<TRequest, TResponse>
         where TRequest : class where TResponse : class
     {
         ActorRepository<TActor, TRequest, TResponse> repository = GetRepository<TActor, TRequest, TResponse>();
@@ -281,7 +282,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TResponse"></typeparam>
     /// <param name="name"></param>
     /// <returns></returns>
-    public bool Shutdown<TActor, TRequest, TResponse>(IActorRef<TActor, TRequest, TResponse> actorRef)
+    public bool Shutdown<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(IActorRef<TActor, TRequest, TResponse> actorRef)
         where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         ActorRepository<TActor, TRequest, TResponse> repository = GetRepository<TActor, TRequest, TResponse>();
@@ -297,7 +298,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TResponse"></typeparam>
     /// <param name="name"></param>
     /// <returns></returns>
-    public bool Shutdown<TActor, TRequest>(string name) where TActor : IActor<TRequest>
+    public bool Shutdown<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(string name) where TActor : IActor<TRequest>
         where TRequest : class
     {
         ActorRepository<TActor, TRequest> repository = GetRepository<TActor, TRequest>();
@@ -313,7 +314,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TResponse"></typeparam>
     /// <param name="name"></param>
     /// <returns></returns>
-    public bool Shutdown<TActor, TRequest>(IActorRef<TActor, TRequest> actorRef)
+    public bool Shutdown<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(IActorRef<TActor, TRequest> actorRef)
         where TActor : IActor<TRequest> where TRequest : class
     {
         ActorRepository<TActor, TRequest> repository = GetRepository<TActor, TRequest>();
@@ -329,7 +330,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TResponse"></typeparam>
     /// <param name="name"></param>
     /// <returns></returns>
-    public bool ShutdownStruct<TActor, TRequest, TResponse>(IActorRefStruct<TActor, TRequest, TResponse> actorRef)
+    public bool ShutdownStruct<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(IActorRefStruct<TActor, TRequest, TResponse> actorRef)
         where TActor : IActorStruct<TRequest, TResponse> where TRequest : struct where TResponse : struct
     {
         ActorRepositoryStruct<TActor, TRequest, TResponse> repository = GetRepositoryStruct<TActor, TRequest, TResponse>();
@@ -345,7 +346,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TResponse"></typeparam>
     /// <param name="name"></param>
     /// <returns></returns>
-    public bool ShutdownStruct<TActor, TRequest>(string name) where TActor : IActorStruct<TRequest>
+    public bool ShutdownStruct<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(string name) where TActor : IActorStruct<TRequest>
         where TRequest : struct
     {
         ActorRepositoryStruct<TActor, TRequest> repository = GetRepositoryStruct<TActor, TRequest>();
@@ -361,7 +362,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TResponse"></typeparam>
     /// <param name="name"></param>
     /// <returns></returns>
-    public bool ShutdownStruct<TActor, TRequest>(IActorRefStruct<TActor, TRequest> actorRef)
+    public bool ShutdownStruct<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(IActorRefStruct<TActor, TRequest> actorRef)
         where TActor : IActorStruct<TRequest> where TRequest : struct
     {
         ActorRepositoryStruct<TActor, TRequest> repository = GetRepositoryStruct<TActor, TRequest>();
@@ -375,7 +376,7 @@ public sealed class ActorSystem : IDisposable
     /// <param name="name"></param>
     /// <param name="maxWait"></param>
     /// <returns></returns>
-    public async Task<bool> GracefulShutdown<TActor, TRequest>(string name, TimeSpan maxWait) where TActor : IActor<TRequest>
+    public async Task<bool> GracefulShutdown<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(string name, TimeSpan maxWait) where TActor : IActor<TRequest>
         where TRequest : class
     {
         ActorRepository<TActor, TRequest> repository = GetRepository<TActor, TRequest>();
@@ -389,7 +390,7 @@ public sealed class ActorSystem : IDisposable
     /// <param name="name"></param>
     /// <param name="maxWait"></param>
     /// <returns></returns>
-    public async Task<bool> GracefulShutdown<TActor, TRequest, TResponse>(string name, TimeSpan maxWait) where TActor : IActor<TRequest, TResponse>
+    public async Task<bool> GracefulShutdown<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(string name, TimeSpan maxWait) where TActor : IActor<TRequest, TResponse>
         where TRequest : class where TResponse : class
     {
         ActorRepository<TActor, TRequest, TResponse> repository = GetRepository<TActor, TRequest, TResponse>();
@@ -405,7 +406,7 @@ public sealed class ActorSystem : IDisposable
     /// <param name="name"></param>
     /// <param name="maxWait"></param>
     /// <returns></returns>
-    public async Task<bool> GracefulShutdown<TActor, TRequest>(IActorRef<TActor, TRequest> actorRef, TimeSpan maxWait)
+    public async Task<bool> GracefulShutdown<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(IActorRef<TActor, TRequest> actorRef, TimeSpan maxWait)
         where TActor : IActor<TRequest> where TRequest : class
     {
         ActorRepository<TActor, TRequest> repository = GetRepository<TActor, TRequest>();
@@ -422,7 +423,7 @@ public sealed class ActorSystem : IDisposable
     /// <param name="name"></param>
     /// <param name="maxWait"></param>
     /// <returns></returns>
-    public async Task<bool> GracefulShutdown<TActor, TRequest, TResponse>(IActorRef<TActor, TRequest, TResponse> actorRef, TimeSpan maxWait)
+    public async Task<bool> GracefulShutdown<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(IActorRef<TActor, TRequest, TResponse> actorRef, TimeSpan maxWait)
         where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class
     {
         ActorRepository<TActor, TRequest, TResponse> repository = GetRepository<TActor, TRequest, TResponse>();
@@ -436,7 +437,7 @@ public sealed class ActorSystem : IDisposable
     /// <param name="name"></param>
     /// <param name="maxWait"></param>
     /// <returns></returns>
-    public async Task<bool> GracefulShutdownStruct<TActor, TRequest>(string name, TimeSpan maxWait) where TActor : IActorStruct<TRequest>
+    public async Task<bool> GracefulShutdownStruct<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(string name, TimeSpan maxWait) where TActor : IActorStruct<TRequest>
         where TRequest : struct
     {
         ActorRepositoryStruct<TActor, TRequest> repository = GetRepositoryStruct<TActor, TRequest>();
@@ -453,7 +454,7 @@ public sealed class ActorSystem : IDisposable
     /// <param name="actorRef"></param>
     /// <param name="maxWait"></param>
     /// <returns></returns>
-    public async Task<bool> GracefulShutdownStruct<TActor, TRequest, TResponse>(IActorRefStruct<TActor, TRequest, TResponse> actorRef, TimeSpan maxWait)
+    public async Task<bool> GracefulShutdownStruct<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(IActorRefStruct<TActor, TRequest, TResponse> actorRef, TimeSpan maxWait)
         where TActor : IActorStruct<TRequest, TResponse> where TRequest : struct where TResponse : struct
     {
         ActorRepositoryStruct<TActor, TRequest, TResponse> repository = GetRepositoryStruct<TActor, TRequest, TResponse>();
@@ -469,7 +470,7 @@ public sealed class ActorSystem : IDisposable
     /// <param name="actorRef"></param>
     /// <param name="maxWait"></param>
     /// <returns></returns>
-    public async Task<bool> GracefulShutdownStruct<TActor, TRequest>(IActorRefStruct<TActor, TRequest> actorRef, TimeSpan maxWait)
+    public async Task<bool> GracefulShutdownStruct<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(IActorRefStruct<TActor, TRequest> actorRef, TimeSpan maxWait)
         where TActor : IActorStruct<TRequest> where TRequest : struct 
     {
         ActorRepositoryStruct<TActor, TRequest> repository = GetRepositoryStruct<TActor, TRequest>();
@@ -484,7 +485,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TRequest"></typeparam>
     /// <typeparam name="TResponse"></typeparam>
     /// <returns></returns>
-    public ActorRepository<TActor, TRequest, TResponse> GetRepository<TActor, TRequest, TResponse>()
+    public ActorRepository<TActor, TRequest, TResponse> GetRepository<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>()
         where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         // Keyed by the closed repository type, not typeof(TActor): one actor class can be used
@@ -501,7 +502,7 @@ public sealed class ActorSystem : IDisposable
         return (ActorRepository<TActor, TRequest, TResponse>)repository.Value;
     }
 
-    private ActorRepository<TActor, TRequest, TResponse> CreateRepository<TActor, TRequest, TResponse>()
+    private ActorRepository<TActor, TRequest, TResponse> CreateRepository<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>()
         where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         ActorRepository<TActor, TRequest, TResponse> repository = new(this, serviceProvider, logger);
@@ -514,7 +515,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TActor"></typeparam>
     /// <typeparam name="TRequest"></typeparam>
     /// <returns></returns>
-    public ActorRepository<TActor, TRequest> GetRepository<TActor, TRequest>()
+    public ActorRepository<TActor, TRequest> GetRepository<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>()
         where TActor : IActor<TRequest> where TRequest : class
     {
         Type key = typeof(ActorRepository<TActor, TRequest>);
@@ -528,13 +529,13 @@ public sealed class ActorSystem : IDisposable
         return (ActorRepository<TActor, TRequest>)repository.Value;
     }
 
-    private Lazy<IActorRepositoryRunnable> CreateRepositoryInternal<TActor, TRequest>(Type type)
+    private Lazy<IActorRepositoryRunnable> CreateRepositoryInternal<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(Type type)
         where TActor : IActor<TRequest> where TRequest : class
     {
         return new(CreateRepositoryBuilder<TActor, TRequest>);
     }
 
-    private ActorRepository<TActor, TRequest> CreateRepositoryBuilder<TActor, TRequest>()
+    private ActorRepository<TActor, TRequest> CreateRepositoryBuilder<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>()
         where TActor : IActor<TRequest> where TRequest : class
     {
         ActorRepository<TActor, TRequest> repository = new(this, serviceProvider, logger);
@@ -547,7 +548,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TActor"></typeparam>
     /// <typeparam name="TRequest"></typeparam>
     /// <returns></returns>
-    public ActorRepositoryAggregate<TActor, TRequest> GetRepositoryAggregate<TActor, TRequest>()
+    public ActorRepositoryAggregate<TActor, TRequest> GetRepositoryAggregate<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>()
         where TActor : IActorAggregate<TRequest> where TRequest : class
     {
         Type key = typeof(ActorRepositoryAggregate<TActor, TRequest>);
@@ -561,13 +562,13 @@ public sealed class ActorSystem : IDisposable
         return (ActorRepositoryAggregate<TActor, TRequest>)repository.Value;
     }
     
-    private Lazy<IActorRepositoryRunnable> CreateRepositoryInternalAggregate<TActor, TRequest>(Type type)
+    private Lazy<IActorRepositoryRunnable> CreateRepositoryInternalAggregate<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(Type type)
         where TActor : IActorAggregate<TRequest> where TRequest : class
     {
         return new(CreateRepositoryBuilderAggreggate<TActor, TRequest>);
     }
     
-    private ActorRepositoryAggregate<TActor, TRequest> CreateRepositoryBuilderAggreggate<TActor, TRequest>()
+    private ActorRepositoryAggregate<TActor, TRequest> CreateRepositoryBuilderAggreggate<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>()
         where TActor : IActorAggregate<TRequest> where TRequest : class
     {
         ActorRepositoryAggregate<TActor, TRequest> repository = new(this, serviceProvider, logger);
@@ -580,7 +581,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TActor"></typeparam>
     /// <typeparam name="TRequest"></typeparam>
     /// <returns></returns>
-    public ActorRepositoryStruct<TActor, TRequest> GetRepositoryStruct<TActor, TRequest>()
+    public ActorRepositoryStruct<TActor, TRequest> GetRepositoryStruct<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>()
         where TActor : IActorStruct<TRequest> where TRequest : struct
     {
         Type key = typeof(ActorRepositoryStruct<TActor, TRequest>);
@@ -594,13 +595,13 @@ public sealed class ActorSystem : IDisposable
         return (ActorRepositoryStruct<TActor, TRequest>)repository.Value;
     }
 
-    private Lazy<IActorRepositoryRunnable> CreateRepositoryStructInternal<TActor, TRequest>(Type type)
+    private Lazy<IActorRepositoryRunnable> CreateRepositoryStructInternal<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(Type type)
         where TActor : IActorStruct<TRequest> where TRequest : struct
     {
         return new(CreateRepositoryStructBuilder<TActor, TRequest>);
     }
 
-    private ActorRepositoryStruct<TActor, TRequest> CreateRepositoryStructBuilder<TActor, TRequest>()
+    private ActorRepositoryStruct<TActor, TRequest> CreateRepositoryStructBuilder<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>()
         where TActor : IActorStruct<TRequest> where TRequest : struct
     {
         ActorRepositoryStruct<TActor, TRequest> repository = new(this, serviceProvider, logger);
@@ -614,7 +615,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TRequest"></typeparam>
     /// <typeparam name="TResponse"></typeparam>
     /// <returns></returns>
-    public ActorRepositoryStruct<TActor, TRequest, TResponse> GetRepositoryStruct<TActor, TRequest, TResponse>()
+    public ActorRepositoryStruct<TActor, TRequest, TResponse> GetRepositoryStruct<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>()
         where TActor : IActorStruct<TRequest, TResponse> where TRequest : struct where TResponse : struct
     {
         Type key = typeof(ActorRepositoryStruct<TActor, TRequest, TResponse>);
@@ -628,7 +629,7 @@ public sealed class ActorSystem : IDisposable
         return (ActorRepositoryStruct<TActor, TRequest, TResponse>)repository.Value;
     }
 
-    private ActorRepositoryStruct<TActor, TRequest, TResponse> CreateRepositoryStruct<TActor, TRequest, TResponse>()
+    private ActorRepositoryStruct<TActor, TRequest, TResponse> CreateRepositoryStruct<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>()
         where TActor : IActorStruct<TRequest, TResponse> where TRequest : struct where TResponse : struct
     {
         ActorRepositoryStruct<TActor, TRequest, TResponse> repository = new(this, serviceProvider, logger);
@@ -641,7 +642,7 @@ public sealed class ActorSystem : IDisposable
     /// <typeparam name="TActor"></typeparam>
     /// <typeparam name="TRequest"></typeparam>
     /// <returns></returns>
-    public ActorRepositoryAggregate<TActor, TRequest, TResponse> GetRepositoryAggregate<TActor, TRequest, TResponse>()
+    public ActorRepositoryAggregate<TActor, TRequest, TResponse> GetRepositoryAggregate<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>()
         where TActor : IActorAggregate<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         Type key = typeof(ActorRepositoryAggregate<TActor, TRequest, TResponse>);
@@ -655,13 +656,13 @@ public sealed class ActorSystem : IDisposable
         return (ActorRepositoryAggregate<TActor, TRequest, TResponse>)repository.Value;
     }
     
-    private Lazy<IActorRepositoryRunnable> CreateRepositoryInternalAggregate<TActor, TRequest, TResponse>(Type type)
+    private Lazy<IActorRepositoryRunnable> CreateRepositoryInternalAggregate<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(Type type)
         where TActor : IActorAggregate<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         return new(CreateRepositoryBuilderAggreggate<TActor, TRequest, TResponse>);
     }
     
-    private ActorRepositoryAggregate<TActor, TRequest, TResponse> CreateRepositoryBuilderAggreggate<TActor, TRequest, TResponse>()
+    private ActorRepositoryAggregate<TActor, TRequest, TResponse> CreateRepositoryBuilderAggreggate<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>()
         where TActor : IActorAggregate<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         ActorRepositoryAggregate<TActor, TRequest, TResponse> repository = new(this, serviceProvider, logger);
@@ -806,7 +807,7 @@ public sealed class ActorSystem : IDisposable
     /// <param name="request"></param>
     /// <param name="delay"></param>
     /// <returns></returns>
-    public void ScheduleShutdown<TActor, TRequest, TResponse>(IActorRef<TActor, TRequest, TResponse> actorRef, TimeSpan delay)
+    public void ScheduleShutdown<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest, TResponse>(IActorRef<TActor, TRequest, TResponse> actorRef, TimeSpan delay)
         where TActor : IActor<TRequest, TResponse> where TRequest : class where TResponse : class?
     {
         scheduler.ScheduleShutdown(actorRef, delay);
@@ -822,7 +823,7 @@ public sealed class ActorSystem : IDisposable
     /// <param name="request"></param>
     /// <param name="delay"></param>
     /// <returns></returns>
-    public void ScheduleShutdown<TActor, TRequest>(IActorRef<TActor, TRequest> actorRef, TimeSpan delay)
+    public void ScheduleShutdown<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest>(IActorRef<TActor, TRequest> actorRef, TimeSpan delay)
         where TActor : IActor<TRequest> where TRequest : class
     {
         scheduler.ScheduleShutdown(actorRef, delay);

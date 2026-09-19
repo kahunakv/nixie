@@ -9,11 +9,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>Nixie</PackageId>
-    <Version>1.3.1</Version>
+    <Version>1.3.2</Version>
     <Description>A Lightweight Actor Model Implementation for C#/.NET</Description>
     <Authors>Andres Gutierrez</Authors>
     <Company>Andres Gutierrez</Company>    
     <InvariantGlobalization>true</InvariantGlobalization>
+    <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageDescription>Lightweight Actor system</PackageDescription>
     <PackageProjectUrl>https://github.com/kahunakv/nixie</PackageProjectUrl>
@@ -37,8 +39,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.12" />
     <PackageReference Include="DotNext.Threading" Version="5.21.0" />
   </ItemGroup>
 </Project>

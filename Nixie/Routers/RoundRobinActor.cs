@@ -1,4 +1,6 @@
 ﻿
+using System.Diagnostics.CodeAnalysis;
+
 // ReSharper disable ConvertToAutoPropertyWhenPossible
 namespace Nixie.Routers;
 
@@ -12,7 +14,7 @@ namespace Nixie.Routers;
 /// </summary>
 /// <typeparam name="TActor"></typeparam>
 /// <typeparam name="TRequest"></typeparam>
-public class RoundRobinActor<TActor, TRequest> : IActor<TRequest>
+public class RoundRobinActor<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest> : IActor<TRequest>
     where TActor : IActor<TRequest> where TRequest : class
 {
     private int position = -1;

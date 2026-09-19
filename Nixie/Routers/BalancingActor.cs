@@ -1,7 +1,9 @@
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Nixie.Routers;
 
-public class BalancingActor<TActor, TRequest> : IActor<TRequest>
+public class BalancingActor<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor, TRequest> : IActor<TRequest>
     where TActor : IActor<TRequest> where TRequest : class
 {
     /// <summary>
